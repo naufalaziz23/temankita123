@@ -427,11 +427,7 @@ export default function DataPasien() {
             />
           </div>
 
-          <button className={styles.filterBtn}>
-            <FilterIcon />
-            <span>Filter</span>
-            <ChevronDownIcon />
-          </button>
+
         </div>
 
         <button className={styles.addBtn} onClick={handleOpenAddModal}>

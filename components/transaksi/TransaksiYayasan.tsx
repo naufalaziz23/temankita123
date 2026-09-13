@@ -115,21 +115,23 @@ function TrashIcon() {
 
 /* ── Helper ── */
 function formatRupiah(num: number): string {
-  return 'Rp ' + num.toLocaleString('id-ID');
+  return 'Rp ' + num.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 /* ── Kategori options ── */
 const KATEGORI_OPTIONS = [
-  'Sembako Lansia',
+  'Santunan Sosok',
+  'Rumah Singgah',
+  'Mobil Siaga',
+  'Pendidikan',
+  'Cek Kesehatan Lansia',
+  'Panti / Pondok Pesantren',
+  'Bersih Alam',
+  'Modal Usaha',
+  'Sembako Lansia/Dhuafa/Disabilitas',
+  'Anak yatim',
   'Foodbox',
   'Perlengkapan Sholat',
-  'Rumah Singgah',
-  'Bersih Alam',
-  'Pendidikan',
-  'Santunan Anak Yatim',
-  'Kesehatan',
-  'Lingkungan',
-  'Lainnya',
 ];
 
 const ITEMS_PER_PAGE = 30;
@@ -149,7 +151,12 @@ export default function TransaksiYayasan() {
   const [dataList, setDataList] = useState<TransaksiItem[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
-  const [filterPeriode, setFilterPeriode] = useState('');
+  const [filterPeriode, setFilterPeriode] = useState(() => {
+    const now = new Date();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const yyyy = String(now.getFullYear());
+    return `${mm}-${yyyy}`;
+  });
   const [currentPage, setCurrentPage] = useState(1);
 
   const fetchTransaksi = useCallback(async () => {
@@ -211,7 +218,11 @@ export default function TransaksiYayasan() {
 
   /* Computed summary */
   const totalDanaMasuk = useMemo(() => dataList.reduce((s, i) => s + (i.jumlahDonasi || 0), 0), [dataList]);
-  const totalImplementasi = useMemo(() => dataList.reduce((s, i) => s + (i.alokasi || 0), 0), [dataList]);
+  // Total Implementasi = jumlahDonasi dari item yang sudah implementasi
+  const totalImplementasi = useMemo(() =>
+    dataList.reduce((s, i) => s + (i.statusImplementasi === 'Sudah Implementasi' ? (i.jumlahDonasi || 0) : 0), 0),
+    [dataList]
+  );
   const sisaTotal = useMemo(() => totalDanaMasuk - totalImplementasi, [totalDanaMasuk, totalImplementasi]);
 
   /* Filtering */
@@ -228,15 +239,37 @@ export default function TransaksiYayasan() {
     if (filterStatus) {
       d = d.filter(i => i.statusImplementasi === filterStatus);
     }
+    if (filterPeriode) {
+      // filterPeriode format: "MM-YYYY" e.g. "09-2026"
+      const [mm, yyyy] = filterPeriode.split('-');
+      const targetMonth = parseInt(mm, 10);
+      const targetYear = parseInt(yyyy, 10);
+      d = d.filter(i => {
+        const tgl = (i.tanggalPencairan || '').trim();
+        let month = -1, year = -1;
+        if (tgl.includes('/')) {
+          // Format DD/MM/YYYY
+          const parts = tgl.split('/');
+          month = parseInt(parts[1], 10);
+          year = parseInt(parts[2], 10);
+        } else if (tgl.includes('-')) {
+          // Format YYYY-MM-DD
+          const parts = tgl.split('-');
+          year = parseInt(parts[0], 10);
+          month = parseInt(parts[1], 10);
+        }
+        return month === targetMonth && year === targetYear;
+      });
+    }
     return d;
-  }, [dataList, searchTerm, filterStatus]);
+  }, [dataList, searchTerm, filterStatus, filterPeriode]);
 
   const totalCount = filteredData.length;
   const totalPages = Math.max(1, Math.ceil(totalCount / ITEMS_PER_PAGE));
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, filterStatus]);
+  }, [searchTerm, filterStatus, filterPeriode]);
 
   useEffect(() => {
     if (currentPage > totalPages) {
@@ -255,14 +288,16 @@ export default function TransaksiYayasan() {
   const handleSaveAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     const jumlah = Number(formData.jumlahDonasi) || 0;
-    const alokasi = Number(formData.alokasi) || 0;
+    const isSudah = formData.statusImplementasi === 'Sudah Implementasi';
+    const alokasi = isSudah ? jumlah : (Number(formData.alokasi) || 0);
+    const sisaDonasi = isSudah ? 0 : jumlah - alokasi;
     const newItem = await addTransaksiYayasan({
       tanggalPencairan: formData.tanggalPencairan || new Date().toLocaleDateString('id-ID'),
       linkDonasi: formData.linkDonasi || 'https://kitabisa.com/',
       jumlahDonasi: jumlah,
       kategori: formData.kategori,
       alokasi: alokasi,
-      sisaDonasi: jumlah - alokasi,
+      sisaDonasi: sisaDonasi,
       statusImplementasi: formData.statusImplementasi,
       linkImplementasi: formData.linkImplementasi,
     });
@@ -289,7 +324,9 @@ export default function TransaksiYayasan() {
     e.preventDefault();
     if (!editingItem) return;
     const jumlah = Number(formData.jumlahDonasi) || 0;
-    const alokasi = Number(formData.alokasi) || 0;
+    const isSudah = formData.statusImplementasi === 'Sudah Implementasi';
+    const alokasi = isSudah ? jumlah : (Number(formData.alokasi) || 0);
+    const sisaDonasi = isSudah ? 0 : jumlah - alokasi;
     const updated: TransaksiItem = {
       ...editingItem,
       tanggalPencairan: formData.tanggalPencairan,
@@ -297,7 +334,7 @@ export default function TransaksiYayasan() {
       jumlahDonasi: jumlah,
       kategori: formData.kategori,
       alokasi: alokasi,
-      sisaDonasi: jumlah - alokasi,
+      sisaDonasi: sisaDonasi,
       statusImplementasi: formData.statusImplementasi,
       linkImplementasi: formData.linkImplementasi,
     };
@@ -355,7 +392,19 @@ export default function TransaksiYayasan() {
             </div>
             <div className={styles.formGroup}>
               <label className={styles.label}>Status Implementasi</label>
-              <select value={formData.statusImplementasi} onChange={e => setFormData({ ...formData, statusImplementasi: e.target.value as TransaksiItem['statusImplementasi'] })} className={styles.select}>
+              <select
+                value={formData.statusImplementasi}
+                onChange={e => {
+                  const status = e.target.value as TransaksiItem['statusImplementasi'];
+                  const jumlah = Number(formData.jumlahDonasi) || 0;
+                  if (status === 'Sudah Implementasi') {
+                    setFormData({ ...formData, statusImplementasi: status, alokasi: String(jumlah), sisaDonasi: '0' });
+                  } else {
+                    setFormData({ ...formData, statusImplementasi: status });
+                  }
+                }}
+                className={styles.select}
+              >
                 <option value="Sudah Implementasi">Sudah Implementasi</option>
                 <option value="Belum Implementasi">Belum Implementasi</option>
               </select>
@@ -435,12 +484,20 @@ export default function TransaksiYayasan() {
             <option value="Sudah Implementasi">Sudah Implementasi</option>
             <option value="Belum Implementasi">Belum Implementasi</option>
           </select>
-          <select className={styles.selectFilter} value={filterPeriode} onChange={e => setFilterPeriode(e.target.value)}>
+          <select className={styles.selectFilter} value={filterPeriode} onChange={e => { setFilterPeriode(e.target.value); setCurrentPage(1); }}>
             <option value="">Semua Periode</option>
-            <option value="jan">Januari 2026</option>
-            <option value="feb">Februari 2026</option>
-            <option value="mar">Maret 2026</option>
-            <option value="apr">April 2026</option>
+            <option value="01-2026">Januari 2026</option>
+            <option value="02-2026">Februari 2026</option>
+            <option value="03-2026">Maret 2026</option>
+            <option value="04-2026">April 2026</option>
+            <option value="05-2026">Mei 2026</option>
+            <option value="06-2026">Juni 2026</option>
+            <option value="07-2026">Juli 2026</option>
+            <option value="08-2026">Agustus 2026</option>
+            <option value="09-2026">September 2026</option>
+            <option value="10-2026">Oktober 2026</option>
+            <option value="11-2026">November 2026</option>
+            <option value="12-2026">Desember 2026</option>
           </select>
         </div>
         <button className={styles.addBtn} onClick={openAdd}>
@@ -486,8 +543,8 @@ export default function TransaksiYayasan() {
                   <td>
                     <span className={styles.categoryBadge}>{item.kategori}</span>
                   </td>
-                  <td className={styles.colAlokasi}>{formatRupiah(item.alokasi)}</td>
-                  <td className={styles.colSisa}>{formatRupiah(item.sisaDonasi)}</td>
+                  <td className={styles.colAlokasi}>{formatRupiah(item.statusImplementasi === 'Sudah Implementasi' ? item.jumlahDonasi : item.alokasi)}</td>
+                  <td className={styles.colSisa}>{formatRupiah(item.statusImplementasi === 'Sudah Implementasi' ? 0 : item.sisaDonasi)}</td>
                   <td>
                     <span className={`${styles.statusBadge} ${item.statusImplementasi === 'Sudah Implementasi' ? styles.statusSudah : styles.statusBelum}`}>
                       <span className={styles.statusDot} />
