@@ -24,9 +24,12 @@ function getBadgeClass(kategori: string): string {
   if (lower.includes('mobil siaga')) return styles.badgeMobil;
   if (lower.includes('rumah singgah')) return styles.badgeRumah;
   if (lower.includes('cek kesehatan')) return styles.badgeCek;
-  if (lower.includes('mobilisasi')) return styles.badgeMobilisasi;
-  if (lower.includes('mbah')) return styles.badgeMbah;
-  if (lower.includes('tanam')) return styles.badgeTanam;
+  if (lower.includes('sembako')) return styles.badgeMobilisasi;
+  if (lower.includes('tanam') || lower.includes('bersih alam')) return styles.badgeTanam;
+  if (lower.includes('santunan') || lower.includes('anak yatim')) return styles.badgeRumah;
+  if (lower.includes('panti') || lower.includes('pondok')) return styles.badgeCek;
+  if (lower.includes('modal usaha') || lower.includes('foodbox')) return styles.badgeMobil;
+  if (lower.includes('perlengkapan') || lower.includes('pendidikan')) return styles.badgeMobilisasi;
   return styles.badgeDefault;
 }
 
@@ -157,11 +160,26 @@ const DEFAULT_CATEGORIES = [
   'Mobil Siaga',
   'Pendidikan',
   'Rumah Singgah',
-  'Cek Kesehatan Gratis',
-  'Mobilisasi Lansia',
-  'Mbah Sumilah',
+  'Cek Kesehatan Lansia',
+  'Sembako Lansia/Dhuafa/Disabilitas',
   'Tanam Pohon',
+  'Santunan Sosok',
+  'Panti/Pondok Pesantren',
+  'Bersih Alam',
+  'Modal Usaha',
+  'Anak Yatim',
+  'Foodbox',
+  'Perlengkapan Sholat',
 ];
+
+/* Kategori lama yang sudah dihapus — disembunyikan dari dropdown */
+const EXCLUDED_CATEGORIES = new Set([
+  'Mbah Sumilah',
+  'Mbah sumilah',
+  'mbah sumilah',
+  'Mobilisasi Lansia',
+  'Cek Kesehatan Gratis',
+]);
 
 /* ── Compute running saldo ── */
 function withSaldo(data: TransaksiKategori[]): (TransaksiKategori & { saldo: number })[] {
@@ -275,8 +293,9 @@ export default function DataNonMedis() {
     const set = new Set<string>();
     DEFAULT_CATEGORIES.forEach((k) => set.add(k));
     dataList.forEach((item) => {
-      if (item.kategori && item.kategori.trim()) {
-        set.add(item.kategori.trim());
+      const kat = item.kategori?.trim();
+      if (kat && !EXCLUDED_CATEGORIES.has(kat)) {
+        set.add(kat);
       }
     });
     return Array.from(set);
