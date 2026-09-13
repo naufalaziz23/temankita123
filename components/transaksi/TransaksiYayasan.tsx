@@ -218,15 +218,39 @@ export default function TransaksiYayasan() {
   /* Form state */
   const [formData, setFormData] = useState({ ...emptyForm });
 
-  /* Computed summary */
-  const totalDanaMasuk = useMemo(() => dataList.reduce((s, i) => s + (i.jumlahDonasi || 0), 0), [dataList]);
-  // Total Implementasi = SUM seluruh nominal implementasi yang sudah digunakan di Data Non Medis
-  const totalImplementasi = useMemo(() =>
-    nonMedisList.reduce((s, n) => s + (n.keluar || 0), 0),
+  /* Helper to compute row alokasi for any item */
+  const getItemAlokasi = useCallback(
+    (item: TransaksiItem) => {
+      if (item.statusImplementasi === 'Sudah Implementasi') {
+        return item.jumlahDonasi || 0;
+      }
+      const catKey = (item.kategori || '').toLowerCase().trim();
+      const catKeluar = nonMedisList
+        .filter((n) => (n.kategori || '').toLowerCase().trim() === catKey)
+        .reduce((s, n) => s + (n.keluar || 0), 0);
+
+      if (catKeluar > 0) {
+        return Math.min(item.jumlahDonasi || 0, catKeluar);
+      }
+      return item.alokasi || 0;
+    },
     [nonMedisList]
   );
+
+  /* Computed summary */
+  const totalDanaMasuk = useMemo(() => dataList.reduce((s, i) => s + (i.jumlahDonasi || 0), 0), [dataList]);
+  
+  // Total Implementasi = SUM nominal implementasi per transaksi
+  const totalImplementasi = useMemo(
+    () => dataList.reduce((s, i) => s + getItemAlokasi(i), 0),
+    [dataList, getItemAlokasi]
+  );
+
   // Sisa Donasi = Total Dana Masuk - Total Implementasi
-  const sisaTotal = useMemo(() => totalDanaMasuk - totalImplementasi, [totalDanaMasuk, totalImplementasi]);
+  const sisaTotal = useMemo(
+    () => Math.max(0, totalDanaMasuk - totalImplementasi),
+    [totalDanaMasuk, totalImplementasi]
+  );
 
   /* Filtering */
   const filteredData = useMemo(() => {
@@ -532,23 +556,8 @@ export default function TransaksiYayasan() {
               </tr>
             ) : (
               pagedData.map((item, index) => {
-                const catKey = (item.kategori || '').toLowerCase().trim();
-                const totalKeluarForCat = nonMedisList
-                  .filter((n) => (n.kategori || '').toLowerCase().trim() === catKey)
-                  .reduce((s, n) => s + (n.keluar || 0), 0);
-
-                const alokasiVal =
-                  item.statusImplementasi === 'Sudah Implementasi'
-                    ? item.jumlahDonasi
-                    : totalKeluarForCat > 0
-                    ? Math.min(item.jumlahDonasi, totalKeluarForCat)
-                    : (item.alokasi || 0);
-
-                const sisaVal =
-                  item.statusImplementasi === 'Sudah Implementasi'
-                    ? 0
-                    : Math.max(0, item.jumlahDonasi - alokasiVal);
-
+                const alokasiVal = getItemAlokasi(item);
+                const sisaVal = Math.max(0, (item.jumlahDonasi || 0) - alokasiVal);
                 const isSudah = sisaVal === 0 || item.statusImplementasi === 'Sudah Implementasi';
                 const statusText = isSudah ? 'Sudah Implementasi' : 'Belum Implementasi';
 

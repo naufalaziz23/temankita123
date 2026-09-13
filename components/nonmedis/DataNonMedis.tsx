@@ -440,7 +440,21 @@ export default function DataNonMedis() {
     return withSaldo(d, totalDonasiYayasan);
   }, [dataList, filterKategori, filterTanggal, filterJenis, searchTerm, totalDonasiYayasan]);
 
-  /* Computed summary stats matching active filter */
+  const totalImplementasiYayasan = useMemo(() => {
+    let filtered = transaksiYayasanList;
+    if (filterKategori !== 'Semua Kategori') {
+      filtered = filtered.filter(
+        (t) => (t.kategori || '').toLowerCase().trim() === filterKategori.toLowerCase().trim()
+      );
+    }
+    return filtered.reduce((s, t) => {
+      if (t.statusImplementasi === 'Sudah Implementasi') {
+        return s + (t.jumlahDonasi || 0);
+      }
+      return s + (t.alokasi || 0);
+    }, 0);
+  }, [transaksiYayasanList, filterKategori]);
+
   const totalMasukNonMedis = useMemo(() => {
     return filteredData.reduce((s, t) => s + (t.masuk ?? 0), 0);
   }, [filteredData]);
@@ -448,8 +462,9 @@ export default function DataNonMedis() {
   const totalMasuk = totalDonasiYayasan + totalMasukNonMedis;
 
   const totalKeluar = useMemo(() => {
-    return filteredData.reduce((s, t) => s + (t.keluar ?? 0), 0);
-  }, [filteredData]);
+    const keluarNonMedis = filteredData.reduce((s, t) => s + (t.keluar ?? 0), 0);
+    return Math.max(keluarNonMedis, totalImplementasiYayasan);
+  }, [filteredData, totalImplementasiYayasan]);
 
   const saldo = totalMasuk - totalKeluar;
 
