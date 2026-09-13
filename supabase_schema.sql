@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS public.data_nonmedis (
   keluar NUMERIC DEFAULT 0,
   bukti_type TEXT DEFAULT NULL,
   bukti_url TEXT DEFAULT '',
+  link_kitabisa TEXT DEFAULT '',
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 

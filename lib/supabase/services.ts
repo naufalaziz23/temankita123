@@ -19,6 +19,7 @@ export interface DataNonMedisItem {
   keluar: number | null;
   buktiType: 'image' | 'link' | null;
   buktiUrl: string;
+  link?: string;
 }
 
 export interface TransaksiYayasanItem {
@@ -208,6 +209,7 @@ export async function getDataNonMedisList(): Promise<DataNonMedisItem[]> {
         keluar: row.keluar !== null && row.keluar !== undefined ? Number(row.keluar) : null,
         buktiType: (row.bukti_type || row.buktiType || null) as 'image' | 'link' | null,
         buktiUrl: String(row.bukti_url || row.buktiUrl || ''),
+        link: String(row.link || row.link_kitabisa || row.linkKitaBisa || ''),
       }));
       if (typeof window !== 'undefined') {
         localStorage.setItem(STORAGE_KEYS.NON_MEDIS, JSON.stringify(formatted));
@@ -239,6 +241,7 @@ export async function addDataNonMedis(item: Omit<DataNonMedisItem, 'id'>): Promi
     keluar: item.keluar,
     bukti_type: item.buktiType,
     bukti_url: item.buktiUrl,
+    link: item.link || '',
   };
 
   try {
@@ -259,6 +262,7 @@ export async function addDataNonMedis(item: Omit<DataNonMedisItem, 'id'>): Promi
         keluar: row.keluar !== null && row.keluar !== undefined ? Number(row.keluar) : null,
         buktiType: (row.bukti_type || row.buktiType || null) as 'image' | 'link' | null,
         buktiUrl: String(row.bukti_url || row.buktiUrl || ''),
+        link: String(row.link || row.link_kitabisa || row.linkKitaBisa || ''),
       };
     }
   } catch (err) {
@@ -283,6 +287,7 @@ export async function updateDataNonMedis(item: DataNonMedisItem): Promise<boolea
     keluar: item.keluar,
     bukti_type: item.buktiType,
     bukti_url: item.buktiUrl,
+    link: item.link || '',
   };
 
   try {
@@ -481,8 +486,8 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   const totalMasukTransaksi = transaksiList.reduce((acc, t) => acc + (t.jumlahDonasi || 0), 0);
   const totalKeluarTransaksi = transaksiList.reduce((acc, t) => acc + (t.alokasi || 0), 0);
 
-  const duitMasuk = totalMasukTransaksi || totalMasukNonMedis || 0;
-  const duitKeluar = totalKeluarTransaksi || totalKeluarNonMedis || 0;
+  const duitMasuk = (totalMasukTransaksi || 0) + (totalMasukNonMedis || 0);
+  const duitKeluar = totalKeluarNonMedis || totalKeluarTransaksi || 0;
 
   // Find category with highest expenditure
   const categoryExpenses: Record<string, number> = {};

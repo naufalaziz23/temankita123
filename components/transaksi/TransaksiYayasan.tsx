@@ -3,6 +3,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   getTransaksiYayasanList,
+  getDataNonMedisList,
   addTransaksiYayasan,
   updateTransaksiYayasan,
   deleteTransaksiYayasan,
@@ -10,6 +11,7 @@ import {
   getUserProfile,
   sanitizeUrl,
   TransaksiYayasanItem,
+  DataNonMedisItem,
   UserProfileData,
 } from '@/lib/supabase/services';
 import AdminProfileDropdown from '@/components/common/AdminProfileDropdown';
@@ -149,20 +151,20 @@ const emptyForm = {
 
 export default function TransaksiYayasan() {
   const [dataList, setDataList] = useState<TransaksiItem[]>([]);
+  const [nonMedisList, setNonMedisList] = useState<DataNonMedisItem[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
-  const [filterPeriode, setFilterPeriode] = useState(() => {
-    const now = new Date();
-    const mm = String(now.getMonth() + 1).padStart(2, '0');
-    const yyyy = String(now.getFullYear());
-    return `${mm}-${yyyy}`;
-  });
+  const [filterPeriode, setFilterPeriode] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
 
   const fetchTransaksi = useCallback(async () => {
     try {
-      const list = await getTransaksiYayasanList();
+      const [list, nonmedis] = await Promise.all([
+        getTransaksiYayasanList(),
+        getDataNonMedisList(),
+      ]);
       setDataList(list);
+      setNonMedisList(nonmedis);
     } catch (e) {
       console.error('Error fetching transaksi yayasan:', e);
     }
@@ -218,11 +220,12 @@ export default function TransaksiYayasan() {
 
   /* Computed summary */
   const totalDanaMasuk = useMemo(() => dataList.reduce((s, i) => s + (i.jumlahDonasi || 0), 0), [dataList]);
-  // Total Implementasi = jumlahDonasi dari item yang sudah implementasi
+  // Total Implementasi = SUM seluruh nominal implementasi yang sudah digunakan di Data Non Medis
   const totalImplementasi = useMemo(() =>
-    dataList.reduce((s, i) => s + (i.statusImplementasi === 'Sudah Implementasi' ? (i.jumlahDonasi || 0) : 0), 0),
-    [dataList]
+    nonMedisList.reduce((s, n) => s + (n.keluar || 0), 0),
+    [nonMedisList]
   );
+  // Sisa Donasi = Total Dana Masuk - Total Implementasi
   const sisaTotal = useMemo(() => totalDanaMasuk - totalImplementasi, [totalDanaMasuk, totalImplementasi]);
 
   /* Filtering */
@@ -475,15 +478,6 @@ export default function TransaksiYayasan() {
       {/* ── Filter Row ── */}
       <div className={styles.filterRow}>
         <div className={styles.filterLeft}>
-          <div className={styles.datePicker}>
-            <CalendarIcon />
-            <input type="date" className={styles.dateInput} placeholder="Pilih tanggal..." />
-          </div>
-          <select className={styles.selectFilter} value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setCurrentPage(1); }}>
-            <option value="">Semua Status</option>
-            <option value="Sudah Implementasi">Sudah Implementasi</option>
-            <option value="Belum Implementasi">Belum Implementasi</option>
-          </select>
           <select className={styles.selectFilter} value={filterPeriode} onChange={e => { setFilterPeriode(e.target.value); setCurrentPage(1); }}>
             <option value="">Semua Periode</option>
             <option value="01-2026">Januari 2026</option>
@@ -500,10 +494,17 @@ export default function TransaksiYayasan() {
             <option value="12-2026">Desember 2026</option>
           </select>
         </div>
-        <button className={styles.addBtn} onClick={openAdd}>
-          <PlusIcon />
-          <span>Tambah Transaksi</span>
-        </button>
+        <div className={styles.filterRight}>
+          <select className={styles.selectFilter} value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setCurrentPage(1); }}>
+            <option value="">Semua Status</option>
+            <option value="Sudah Implementasi">Sudah Implementasi</option>
+            <option value="Belum Implementasi">Belum Implementasi</option>
+          </select>
+          <button className={styles.addBtn} onClick={openAdd}>
+            <PlusIcon />
+            <span>Tambah Transaksi</span>
+          </button>
+        </div>
       </div>
 
       {/* ── Data Table ── */}

@@ -3,6 +3,7 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import {
   getDataNonMedisList,
+  getTransaksiYayasanList,
   addDataNonMedis,
   updateDataNonMedis,
   deleteDataNonMedis,
@@ -10,6 +11,7 @@ import {
   getUserProfile,
   sanitizeUrl,
   DataNonMedisItem,
+  TransaksiYayasanItem,
   UserProfileData,
 } from '@/lib/supabase/services';
 import AdminProfileDropdown from '@/components/common/AdminProfileDropdown';
@@ -151,6 +153,16 @@ function UploadIcon() {
   );
 }
 
+function ExternalLinkIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
+      <polyline points="15 3 21 3 21 9" />
+      <line x1="10" y1="14" x2="21" y2="3" />
+    </svg>
+  );
+}
+
 /* ── Helpers ── */
 function formatRp(val: number): string {
   return 'Rp ' + (val || 0).toLocaleString('id-ID');
@@ -193,6 +205,7 @@ function withSaldo(data: TransaksiKategori[]): (TransaksiKategori & { saldo: num
 /* ── Main Component ── */
 export default function DataNonMedis() {
   const [dataList, setDataList] = useState<TransaksiKategori[]>([]);
+  const [transaksiYayasanList, setTransaksiYayasanList] = useState<TransaksiYayasanItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -244,12 +257,27 @@ export default function DataNonMedis() {
     };
   }, []);
 
+  /* Helper: find link to KitaBisa for a category */
+  const getKitabisaLink = useCallback(
+    (kategoriName: string) => {
+      const match = transaksiYayasanList.find(
+        (t) => t.kategori && t.kategori.toLowerCase().trim() === (kategoriName || '').toLowerCase().trim()
+      );
+      return match?.linkDonasi || 'https://kitabisa.com';
+    },
+    [transaksiYayasanList]
+  );
+
   /* Fetch Data */
   const fetchData = useCallback(async () => {
     try {
       setIsLoading(true);
-      const list = await getDataNonMedisList();
+      const [list, transaksiList] = await Promise.all([
+        getDataNonMedisList(),
+        getTransaksiYayasanList(),
+      ]);
       setDataList(list);
+      setTransaksiYayasanList(transaksiList);
       setErrorMessage('');
     } catch (e) {
       console.error('Error fetching data non medis:', e);
@@ -325,6 +353,7 @@ export default function DataNonMedis() {
     masuk: '',
     keluar: '',
     buktiUrl: '',
+    link: '',
   });
   const [previewUrl, setPreviewUrl] = useState<string>('');
   const fileInputAddRef = useRef<HTMLInputElement>(null);
@@ -437,6 +466,7 @@ export default function DataNonMedis() {
       masuk: '',
       keluar: '',
       buktiUrl: '',
+      link: '',
     });
     setPreviewUrl('');
   }
@@ -457,6 +487,7 @@ export default function DataNonMedis() {
       keluar: formData.keluar ? Number(formData.keluar) : null,
       buktiType: formData.buktiUrl ? 'image' : null,
       buktiUrl: formData.buktiUrl,
+      link: formData.link,
     });
     setDataList((prev) => [newItem, ...prev]);
     setIsAddModalOpen(false);
@@ -473,6 +504,7 @@ export default function DataNonMedis() {
       masuk: item.masuk !== null ? String(item.masuk) : '',
       keluar: item.keluar !== null ? String(item.keluar) : '',
       buktiUrl: item.buktiUrl,
+      link: item.link || '',
     });
     setPreviewUrl(item.buktiUrl || '');
   }
@@ -489,6 +521,7 @@ export default function DataNonMedis() {
       keluar: formData.keluar ? Number(formData.keluar) : null,
       buktiType: formData.buktiUrl ? 'image' : null,
       buktiUrl: formData.buktiUrl,
+      link: formData.link,
     };
     await updateDataNonMedis(updated);
     setDataList((prev) => prev.map((t) => (t.id === editingItem.id ? updated : t)));
@@ -820,6 +853,7 @@ export default function DataNonMedis() {
                 </span>
               </th>
               <th>Kategori</th>
+              <th>Link KitaBisa</th>
               <th>Keterangan</th>
               <th>
                 <span className={styles.sortHeader}>
@@ -843,19 +877,20 @@ export default function DataNonMedis() {
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={9} style={{ textAlign: 'center', padding: '30px', color: '#0284c7' }}>
+                <td colSpan={10} style={{ textAlign: 'center', padding: '30px', color: '#0284c7' }}>
                   Memuat data transaksi...
                 </td>
               </tr>
             ) : paginatedData.length === 0 ? (
               <tr>
-                <td colSpan={9} style={{ textAlign: 'center', padding: '30px', color: '#64748b' }}>
+                <td colSpan={10} style={{ textAlign: 'center', padding: '30px', color: '#64748b' }}>
                   Tidak ada transaksi yang ditemukan.
                 </td>
               </tr>
             ) : (
               paginatedData.map((item, index) => {
                 const itemIndex = (currentPage - 1) * ITEMS_PER_PAGE + index + 1;
+                const activeLink = item.link || getKitabisaLink(item.kategori);
                 return (
                   <tr key={item.id}>
                     <td className={styles.colNo}>{itemIndex}</td>
@@ -864,6 +899,22 @@ export default function DataNonMedis() {
                       <span className={`${styles.categoryBadge} ${getBadgeClass(item.kategori)}`}>
                         {item.kategori}
                       </span>
+                    </td>
+                    <td>
+                      {activeLink ? (
+                        <a
+                          href={sanitizeUrl(activeLink)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={styles.kitabisaLinkBtn}
+                          title="Lihat Link KitaBisa / Campaign"
+                        >
+                          <ExternalLinkIcon />
+                          <span>KitaBisa</span>
+                        </a>
+                      ) : (
+                        <span className={styles.amountDash}>-</span>
+                      )}
                     </td>
                     <td>{item.keterangan}</td>
                     <td className={item.masuk !== null ? styles.amountPos : styles.amountDash}>
@@ -963,6 +1014,17 @@ export default function DataNonMedis() {
                       ))}
                     </datalist>
                   </div>
+                </div>
+
+                <div className={styles.formGroup}>
+                  <label className={styles.label}>Link KitaBisa / Campaign (Opsional)</label>
+                  <input
+                    type="text"
+                    placeholder="https://kitabisa.com/..."
+                    value={formData.link}
+                    onChange={(e) => setFormData({ ...formData, link: e.target.value })}
+                    className={styles.input}
+                  />
                 </div>
 
                 <div className={styles.formGroup}>
@@ -1102,6 +1164,17 @@ export default function DataNonMedis() {
                       ))}
                     </datalist>
                   </div>
+                </div>
+
+                <div className={styles.formGroup}>
+                  <label className={styles.label}>Link KitaBisa / Campaign (Opsional)</label>
+                  <input
+                    type="text"
+                    placeholder="https://kitabisa.com/..."
+                    value={formData.link}
+                    onChange={(e) => setFormData({ ...formData, link: e.target.value })}
+                    className={styles.input}
+                  />
                 </div>
 
                 <div className={styles.formGroup}>
