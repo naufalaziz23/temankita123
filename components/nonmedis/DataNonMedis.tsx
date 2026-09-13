@@ -193,13 +193,25 @@ const EXCLUDED_CATEGORIES = new Set([
   'Cek Kesehatan Gratis',
 ]);
 
-/* ── Compute running saldo ── */
-function withSaldo(data: TransaksiKategori[]): (TransaksiKategori & { saldo: number })[] {
-  let running = 0;
-  return data.map((t) => {
-    running += (t.masuk ?? 0) - (t.keluar ?? 0);
-    return { ...t, saldo: running };
+/* ── Compute running saldo chronologically ── */
+function withSaldo(data: TransaksiKategori[], initialSaldo: number = 0): (TransaksiKategori & { saldo: number })[] {
+  const sortedAsc = [...data].sort((a, b) => {
+    if (a.id && b.id) return a.id - b.id;
+    return 0;
   });
+
+  let running = initialSaldo;
+  const saldoMap = new Map<number, number>();
+
+  sortedAsc.forEach((t) => {
+    running += (t.masuk ?? 0) - (t.keluar ?? 0);
+    saldoMap.set(t.id, running);
+  });
+
+  return data.map((t) => ({
+    ...t,
+    saldo: saldoMap.get(t.id) ?? running,
+  }));
 }
 
 /* ── Main Component ── */
@@ -382,6 +394,17 @@ export default function DataNonMedis() {
     if (fileInputEditRef.current) fileInputEditRef.current.value = '';
   };
 
+  /* Total Donasi Masuk dari Transaksi Yayasan (realtime) */
+  const totalDonasiYayasan = useMemo(() => {
+    let filtered = transaksiYayasanList;
+    if (filterKategori !== 'Semua Kategori') {
+      filtered = filtered.filter(
+        (t) => (t.kategori || '').toLowerCase().trim() === filterKategori.toLowerCase().trim()
+      );
+    }
+    return filtered.reduce((s, t) => s + (t.jumlahDonasi || 0), 0);
+  }, [transaksiYayasanList, filterKategori]);
+
   /* ── Filtered data combining Kategori, Tanggal, Jenis, Search ── */
   const filteredData = useMemo(() => {
     let d = dataList;
@@ -414,13 +437,15 @@ export default function DataNonMedis() {
       );
     }
 
-    return withSaldo(d);
-  }, [dataList, filterKategori, filterTanggal, filterJenis, searchTerm]);
+    return withSaldo(d, totalDonasiYayasan);
+  }, [dataList, filterKategori, filterTanggal, filterJenis, searchTerm, totalDonasiYayasan]);
 
   /* Computed summary stats matching active filter */
-  const totalMasuk = useMemo(() => {
+  const totalMasukNonMedis = useMemo(() => {
     return filteredData.reduce((s, t) => s + (t.masuk ?? 0), 0);
   }, [filteredData]);
+
+  const totalMasuk = totalDonasiYayasan + totalMasukNonMedis;
 
   const totalKeluar = useMemo(() => {
     return filteredData.reduce((s, t) => s + (t.keluar ?? 0), 0);

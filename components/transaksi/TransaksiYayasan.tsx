@@ -531,39 +531,61 @@ export default function TransaksiYayasan() {
                 </td>
               </tr>
             ) : (
-              pagedData.map((item, index) => (
-                <tr key={item.id}>
-                  <td className={styles.colNo}>{(currentPage - 1) * ITEMS_PER_PAGE + index + 1}</td>
-                  <td className={styles.colDate}>{item.tanggalPencairan}</td>
-                  <td>
-                    <a href={sanitizeUrl(item.linkDonasi)} target="_blank" rel="noopener noreferrer" className={styles.linkBtn}>
-                      <ExternalLinkIcon /> <span>Lihat</span>
-                    </a>
-                  </td>
-                  <td className={styles.colAmount}>{formatRupiah(item.jumlahDonasi)}</td>
-                  <td>
-                    <span className={styles.categoryBadge}>{item.kategori}</span>
-                  </td>
-                  <td className={styles.colAlokasi}>{formatRupiah(item.statusImplementasi === 'Sudah Implementasi' ? item.jumlahDonasi : item.alokasi)}</td>
-                  <td className={styles.colSisa}>{formatRupiah(item.statusImplementasi === 'Sudah Implementasi' ? 0 : item.sisaDonasi)}</td>
-                  <td>
-                    <span className={`${styles.statusBadge} ${item.statusImplementasi === 'Sudah Implementasi' ? styles.statusSudah : styles.statusBelum}`}>
-                      <span className={styles.statusDot} />
-                      {item.statusImplementasi}
-                    </span>
-                  </td>
-                  <td>
-                    <div className={styles.actionsCell}>
-                      <button className={`${styles.actionIconBtn} ${styles.btnEdit}`} title="Edit" onClick={() => openEdit(item)}>
-                        <EditIcon />
-                      </button>
-                      <button className={`${styles.actionIconBtn} ${styles.btnDelete}`} title="Hapus" onClick={() => setDeletingItem(item)}>
-                        <TrashIcon />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))
+              pagedData.map((item, index) => {
+                const catKey = (item.kategori || '').toLowerCase().trim();
+                const totalKeluarForCat = nonMedisList
+                  .filter((n) => (n.kategori || '').toLowerCase().trim() === catKey)
+                  .reduce((s, n) => s + (n.keluar || 0), 0);
+
+                const alokasiVal =
+                  item.statusImplementasi === 'Sudah Implementasi'
+                    ? item.jumlahDonasi
+                    : totalKeluarForCat > 0
+                    ? Math.min(item.jumlahDonasi, totalKeluarForCat)
+                    : (item.alokasi || 0);
+
+                const sisaVal =
+                  item.statusImplementasi === 'Sudah Implementasi'
+                    ? 0
+                    : Math.max(0, item.jumlahDonasi - alokasiVal);
+
+                const isSudah = sisaVal === 0 || item.statusImplementasi === 'Sudah Implementasi';
+                const statusText = isSudah ? 'Sudah Implementasi' : 'Belum Implementasi';
+
+                return (
+                  <tr key={item.id}>
+                    <td className={styles.colNo}>{(currentPage - 1) * ITEMS_PER_PAGE + index + 1}</td>
+                    <td className={styles.colDate}>{item.tanggalPencairan}</td>
+                    <td>
+                      <a href={sanitizeUrl(item.linkDonasi)} target="_blank" rel="noopener noreferrer" className={styles.linkBtn}>
+                        <ExternalLinkIcon /> <span>Lihat</span>
+                      </a>
+                    </td>
+                    <td className={styles.colAmount}>{formatRupiah(item.jumlahDonasi)}</td>
+                    <td>
+                      <span className={styles.categoryBadge}>{item.kategori}</span>
+                    </td>
+                    <td className={styles.colAlokasi}>{formatRupiah(alokasiVal)}</td>
+                    <td className={styles.colSisa}>{formatRupiah(sisaVal)}</td>
+                    <td>
+                      <span className={`${styles.statusBadge} ${isSudah ? styles.statusSudah : styles.statusBelum}`}>
+                        <span className={styles.statusDot} />
+                        {statusText}
+                      </span>
+                    </td>
+                    <td>
+                      <div className={styles.actionsCell}>
+                        <button className={`${styles.actionIconBtn} ${styles.btnEdit}`} title="Edit" onClick={() => openEdit(item)}>
+                          <EditIcon />
+                        </button>
+                        <button className={`${styles.actionIconBtn} ${styles.btnDelete}`} title="Hapus" onClick={() => setDeletingItem(item)}>
+                          <TrashIcon />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
