@@ -117,7 +117,10 @@ function TrashIcon() {
 
 /* ── Helper ── */
 function formatRupiah(num: number): string {
-  return 'Rp ' + num.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (num === null || num === undefined || isNaN(num)) return 'Rp 0,00';
+  const isNeg = num < 0;
+  const absFormatted = Math.abs(num).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return isNeg ? `Rp -${absFormatted}` : `Rp ${absFormatted}`;
 }
 
 /* ── Kategori options ── */
@@ -175,8 +178,17 @@ export default function TransaksiYayasan() {
     const unsub = subscribeToDatabaseChanges(() => {
       fetchTransaksi();
     });
+
+    const handleFocus = () => {
+      fetchTransaksi();
+    };
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('visibilitychange', handleFocus);
+
     return () => {
       unsub();
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('visibilitychange', handleFocus);
     };
   }, [fetchTransaksi]);
 
@@ -221,34 +233,50 @@ export default function TransaksiYayasan() {
   /* Helper to compute row alokasi for any item */
   const getItemAlokasi = useCallback(
     (item: TransaksiItem) => {
+      // Cek status DULU — jika sudah implementasi, sisa selalu 0
       if (item.statusImplementasi === 'Sudah Implementasi') {
         return item.jumlahDonasi || 0;
       }
+      // Baru cek pengeluaran dari Data Non Medis per kategori
       const catKey = (item.kategori || '').toLowerCase().trim();
       const catKeluar = nonMedisList
         .filter((n) => (n.kategori || '').toLowerCase().trim() === catKey)
         .reduce((s, n) => s + (n.keluar || 0), 0);
 
       if (catKeluar > 0) {
-        return Math.min(item.jumlahDonasi || 0, catKeluar);
+        return catKeluar;
       }
       return item.alokasi || 0;
     },
     [nonMedisList]
   );
 
-  /* Computed summary */
-  const totalDanaMasuk = useMemo(() => dataList.reduce((s, i) => s + (i.jumlahDonasi || 0), 0), [dataList]);
-  
-  // Total Implementasi = SUM nominal implementasi per transaksi
-  const totalImplementasi = useMemo(
-    () => dataList.reduce((s, i) => s + getItemAlokasi(i), 0),
-    [dataList, getItemAlokasi]
+  /* Computed summary - sinkron dengan Data Non Medis (Pemasukan - Pengeluaran = Saldo/Sisa Donasi) */
+  const totalMasukTransaksi = useMemo(() => dataList.reduce((s, i) => s + (i.jumlahDonasi || 0), 0), [dataList]);
+  const totalMasukNonMedis = useMemo(() => nonMedisList.reduce((s, n) => s + (n.masuk || 0), 0), [nonMedisList]);
+  const totalDanaMasuk = useMemo(() => totalMasukTransaksi + totalMasukNonMedis, [totalMasukTransaksi, totalMasukNonMedis]);
+
+  const totalKeluarNonMedis = useMemo(() => nonMedisList.reduce((s, n) => s + (n.keluar || 0), 0), [nonMedisList]);
+  const totalImplementasiTransaksi = useMemo(
+    () =>
+      dataList.reduce((s, i) => {
+        if (i.statusImplementasi === 'Sudah Implementasi') {
+          return s + (i.jumlahDonasi || 0);
+        }
+        return s + (i.alokasi || 0);
+      }, 0),
+    [dataList]
   );
 
-  // Sisa Donasi = Total Dana Masuk - Total Implementasi
+  // Total Implementasi / Pengeluaran
+  const totalImplementasi = useMemo(
+    () => Math.max(totalKeluarNonMedis, totalImplementasiTransaksi),
+    [totalKeluarNonMedis, totalImplementasiTransaksi]
+  );
+
+  // Sisa Donasi = Saldo (Pemasukan - Pengeluaran)
   const sisaTotal = useMemo(
-    () => Math.max(0, totalDanaMasuk - totalImplementasi),
+    () => totalDanaMasuk - totalImplementasi,
     [totalDanaMasuk, totalImplementasi]
   );
 
@@ -517,13 +545,13 @@ export default function TransaksiYayasan() {
             <option value="11-2026">November 2026</option>
             <option value="12-2026">Desember 2026</option>
           </select>
-        </div>
-        <div className={styles.filterRight}>
           <select className={styles.selectFilter} value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setCurrentPage(1); }}>
             <option value="">Semua Status</option>
             <option value="Sudah Implementasi">Sudah Implementasi</option>
             <option value="Belum Implementasi">Belum Implementasi</option>
           </select>
+        </div>
+        <div className={styles.filterRight}>
           <button className={styles.addBtn} onClick={openAdd}>
             <PlusIcon />
             <span>Tambah Transaksi</span>
@@ -557,8 +585,8 @@ export default function TransaksiYayasan() {
             ) : (
               pagedData.map((item, index) => {
                 const alokasiVal = getItemAlokasi(item);
-                const sisaVal = Math.max(0, (item.jumlahDonasi || 0) - alokasiVal);
-                const isSudah = sisaVal === 0 || item.statusImplementasi === 'Sudah Implementasi';
+                const sisaVal = (item.jumlahDonasi || 0) - alokasiVal;
+                const isSudah = sisaVal <= 0 || item.statusImplementasi === 'Sudah Implementasi';
                 const statusText = isSudah ? 'Sudah Implementasi' : 'Belum Implementasi';
 
                 return (

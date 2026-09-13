@@ -258,6 +258,12 @@
   flex-wrap: wrap;
 }
 
+.filterRight {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .datePicker {
   display: flex;
   align-items: center;
@@ -419,12 +425,14 @@
 }
 
 .colAlokasi {
-  color: #475569;
+  font-weight: 700;
+  color: #0f172a;
   white-space: nowrap;
 }
 
 .colSisa {
-  color: #475569;
+  font-weight: 700;
+  color: #0f172a;
   white-space: nowrap;
 }
 
