@@ -117,9 +117,9 @@ function TrashIcon() {
 
 /* ── Helper ── */
 function formatRupiah(num: number): string {
-  if (num === null || num === undefined || isNaN(num)) return 'Rp 0,00';
+  if (num === null || num === undefined || isNaN(num)) return 'Rp 0';
   const isNeg = num < 0;
-  const absFormatted = Math.abs(num).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const absFormatted = Math.abs(num).toLocaleString('id-ID');
   return isNeg ? `Rp -${absFormatted}` : `Rp ${absFormatted}`;
 }
 

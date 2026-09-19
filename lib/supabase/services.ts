@@ -494,15 +494,57 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   // Total perputaran uang: sum of jumlahDonasi from transaksi_yayasan
   const totalPerputaranUang = transaksiList.reduce((acc, t) => acc + (t.jumlahDonasi || 0), 0);
 
-  // Total pemasukan: sum of masuk from nonmedis or transaksi
+  // Monthly grouping for chart
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const monthMapIndex: Record<string, number> = {
+    '01': 0, '02': 1, '03': 2, '04': 3, '05': 4, '06': 5,
+    '07': 6, '08': 7, '09': 8, '10': 9, '11': 10, '12': 11,
+    '1': 0, '2': 1, '3': 2, '4': 3, '5': 4, '6': 5,
+    '7': 6, '8': 7, '9': 8
+  };
+
+  const chartData = months.map((m) => ({ month: m, masuk: 0, keluar: 0 }));
+
+  // Aggregate transaksi yayasan into chartData
+  for (const t of transaksiList) {
+    if (t.tanggalPencairan) {
+      const parts = t.tanggalPencairan.split(/[\/\-]/);
+      if (parts.length >= 2) {
+        const mIdx = monthMapIndex[parts[1]?.trim()];
+        if (mIdx !== undefined && chartData[mIdx]) {
+          chartData[mIdx].masuk += t.jumlahDonasi || 0;
+          chartData[mIdx].keluar += t.alokasi || 0;
+        }
+      }
+    }
+  }
+
+  // Aggregate nonmedis into chartData
+  for (const n of nonmedisList) {
+    if (n.tanggal) {
+      const parts = n.tanggal.split(/[\/\-]/);
+      if (parts.length >= 2) {
+        const mIdx = monthMapIndex[parts[1]?.trim()];
+        if (mIdx !== undefined && chartData[mIdx]) {
+          if (n.masuk) chartData[mIdx].masuk += n.masuk;
+          if (n.keluar) chartData[mIdx].keluar += n.keluar;
+        }
+      }
+    }
+  }
+
+  // Current month totals for bottom cards so Card & Chart match 100%
+  const currentMonthIdx = new Date().getMonth();
+  const currentMonthMasuk = chartData[currentMonthIdx]?.masuk || 0;
+  const currentMonthKeluar = chartData[currentMonthIdx]?.keluar || 0;
+
   const totalMasukNonMedis = nonmedisList.reduce((acc, n) => acc + (n.masuk || 0), 0);
   const totalKeluarNonMedis = nonmedisList.reduce((acc, n) => acc + (n.keluar || 0), 0);
-
   const totalMasukTransaksi = transaksiList.reduce((acc, t) => acc + (t.jumlahDonasi || 0), 0);
   const totalKeluarTransaksi = transaksiList.reduce((acc, t) => acc + (t.alokasi || 0), 0);
 
-  const duitMasuk = (totalMasukTransaksi || 0) + (totalMasukNonMedis || 0);
-  const duitKeluar = totalKeluarNonMedis || totalKeluarTransaksi || 0;
+  const duitMasuk = currentMonthMasuk > 0 ? currentMonthMasuk : (totalMasukTransaksi + totalMasukNonMedis);
+  const duitKeluar = currentMonthKeluar > 0 ? currentMonthKeluar : (totalKeluarNonMedis || totalKeluarTransaksi);
 
   // Find category with highest expenditure
   const categoryExpenses: Record<string, number> = {};
@@ -526,45 +568,6 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     }
   }
 
-  // Monthly grouping for chart
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const monthMapIndex: Record<string, number> = {
-    '01': 0, '02': 1, '03': 2, '04': 3, '05': 4, '06': 5,
-    '07': 6, '08': 7, '09': 8, '10': 9, '11': 10, '12': 11,
-    '1': 0, '2': 1, '3': 2, '4': 3, '5': 4, '6': 5,
-    '7': 6, '8': 7, '9': 8
-  };
-
-  const chartData = months.map((m) => ({ month: m, masuk: 0, keluar: 0 }));
-
-  // Aggregate transaksi yayasan into months
-  for (const t of transaksiList) {
-    if (t.tanggalPencairan) {
-      const parts = t.tanggalPencairan.split(/[\/\-]/);
-      if (parts.length >= 2) {
-        const mIdx = monthMapIndex[parts[1]];
-        if (mIdx !== undefined && chartData[mIdx]) {
-          chartData[mIdx].masuk += (t.jumlahDonasi || 0) / 1000;
-          chartData[mIdx].keluar += (t.alokasi || 0) / 1000;
-        }
-      }
-    }
-  }
-
-  // Aggregate nonmedis into months if needed
-  for (const n of nonmedisList) {
-    if (n.tanggal) {
-      const parts = n.tanggal.split(/[\/\-]/);
-      if (parts.length >= 2) {
-        const mIdx = monthMapIndex[parts[1]];
-        if (mIdx !== undefined && chartData[mIdx]) {
-          if (n.masuk) chartData[mIdx].masuk += n.masuk / 1000;
-          if (n.keluar) chartData[mIdx].keluar += n.keluar / 1000;
-        }
-      }
-    }
-  }
-
   return {
     totalPasien,
     totalDataNonMedis,
@@ -583,8 +586,9 @@ export async function getDashboardStats(): Promise<DashboardStats> {
 export function subscribeToDatabaseChanges(onDataChange: () => void) {
   try {
     const supabase = createClient();
+    const channelName = `db-changes-${Math.random().toString(36).slice(2)}`;
     const channel = supabase
-      .channel('schema-db-changes')
+      .channel(channelName)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'pasien' }, () => {
         onDataChange();
       })

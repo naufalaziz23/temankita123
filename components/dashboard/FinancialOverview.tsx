@@ -43,7 +43,7 @@ function CustomTooltip({ active, payload, label }: { active?: boolean; payload?:
             {entry.dataKey === 'masuk' ? 'Duit Masuk' : 'Duit Keluar'}
           </span>
           <span className={styles.tooltipValue}>
-            Rp {(Number(entry.value || 0) * 1000).toLocaleString('id-ID')}
+            Rp {Number(entry.value || 0).toLocaleString('id-ID')}
           </span>
         </div>
       ))}
@@ -101,12 +101,12 @@ export default function FinancialOverview() {
     };
   }, []);
 
-  // Compute maximum domain value based on data
+  // Compute maximum domain value dynamically based on actual data
   const maxVal = Math.max(
     ...chartData.map((d) => Math.max(d.masuk, d.keluar)),
-    1000
+    100
   );
-  const domainMax = Math.ceil(maxVal / 1000) * 1000;
+  const domainMax = Math.ceil(maxVal * 1.15);
 
   return (
     <div className={styles.card}>
@@ -163,8 +163,13 @@ export default function FinancialOverview() {
               axisLine={false}
               tickLine={false}
               tick={{ fontSize: 11, fill: '#64748b' }}
-              tickFormatter={(v: number) => (v === 0 ? '0' : `${Math.round(v)}k`)}
-              domain={[0, domainMax || 5000]}
+              tickFormatter={(v: number) => {
+                if (v === 0) return '0';
+                if (v >= 1000000) return `${Math.round(v / 1000000)}M`;
+                if (v >= 1000) return `${Math.round(v / 1000)}k`;
+                return `${Math.round(v)}`;
+              }}
+              domain={[0, domainMax]}
             />
             <Tooltip content={<CustomTooltip />} />
             <Area
