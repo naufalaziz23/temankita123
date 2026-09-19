@@ -233,17 +233,12 @@ export default function TransaksiYayasan() {
   /* Helper to compute row alokasi for any item */
   const getItemAlokasi = useCallback(
     (item: TransaksiItem) => {
-      // Cek status DULU — jika sudah implementasi, sisa selalu 0
-      if (item.statusImplementasi === 'Sudah Implementasi') {
-        return item.jumlahDonasi || 0;
-      }
-      // Baru cek pengeluaran dari Data Non Medis per kategori
       const catKey = (item.kategori || '').toLowerCase().trim();
       const catKeluar = nonMedisList
         .filter((n) => (n.kategori || '').toLowerCase().trim() === catKey)
         .reduce((s, n) => s + (n.keluar || 0), 0);
 
-      if (catKeluar > 0) {
+      if (catKeluar > 0 && (!item.alokasi || item.alokasi === 0)) {
         return catKeluar;
       }
       return item.alokasi || 0;
@@ -251,34 +246,10 @@ export default function TransaksiYayasan() {
     [nonMedisList]
   );
 
-  /* Computed summary - sinkron dengan Data Non Medis (Pemasukan - Pengeluaran = Saldo/Sisa Donasi) */
-  const totalMasukTransaksi = useMemo(() => dataList.reduce((s, i) => s + (i.jumlahDonasi || 0), 0), [dataList]);
-  const totalMasukNonMedis = useMemo(() => nonMedisList.reduce((s, n) => s + (n.masuk || 0), 0), [nonMedisList]);
-  const totalDanaMasuk = useMemo(() => totalMasukTransaksi + totalMasukNonMedis, [totalMasukTransaksi, totalMasukNonMedis]);
-
-  const totalKeluarNonMedis = useMemo(() => nonMedisList.reduce((s, n) => s + (n.keluar || 0), 0), [nonMedisList]);
-  const totalImplementasiTransaksi = useMemo(
-    () =>
-      dataList.reduce((s, i) => {
-        if (i.statusImplementasi === 'Sudah Implementasi') {
-          return s + (i.jumlahDonasi || 0);
-        }
-        return s + (i.alokasi || 0);
-      }, 0),
-    [dataList]
-  );
-
-  // Total Implementasi / Pengeluaran
-  const totalImplementasi = useMemo(
-    () => Math.max(totalKeluarNonMedis, totalImplementasiTransaksi),
-    [totalKeluarNonMedis, totalImplementasiTransaksi]
-  );
-
-  // Sisa Donasi = Saldo (Pemasukan - Pengeluaran)
-  const sisaTotal = useMemo(
-    () => totalDanaMasuk - totalImplementasi,
-    [totalDanaMasuk, totalImplementasi]
-  );
+  /* Computed summary */
+  const totalDanaMasuk = useMemo(() => dataList.reduce((s, i) => s + (i.jumlahDonasi || 0), 0), [dataList]);
+  const totalImplementasi = useMemo(() => dataList.reduce((s, i) => s + (getItemAlokasi(i) || 0), 0), [dataList, getItemAlokasi]);
+  const sisaTotal = useMemo(() => totalDanaMasuk - totalImplementasi, [totalDanaMasuk, totalImplementasi]);
 
   /* Filtering */
   const filteredData = useMemo(() => {
@@ -343,9 +314,8 @@ export default function TransaksiYayasan() {
   const handleSaveAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     const jumlah = Number(formData.jumlahDonasi) || 0;
-    const isSudah = formData.statusImplementasi === 'Sudah Implementasi';
-    const alokasi = isSudah ? jumlah : (Number(formData.alokasi) || 0);
-    const sisaDonasi = isSudah ? 0 : jumlah - alokasi;
+    const alokasi = Number(formData.alokasi) || 0;
+    const sisaDonasi = jumlah - alokasi;
     const newItem = await addTransaksiYayasan({
       tanggalPencairan: formData.tanggalPencairan || new Date().toLocaleDateString('id-ID'),
       linkDonasi: formData.linkDonasi || 'https://kitabisa.com/',
@@ -379,9 +349,8 @@ export default function TransaksiYayasan() {
     e.preventDefault();
     if (!editingItem) return;
     const jumlah = Number(formData.jumlahDonasi) || 0;
-    const isSudah = formData.statusImplementasi === 'Sudah Implementasi';
-    const alokasi = isSudah ? jumlah : (Number(formData.alokasi) || 0);
-    const sisaDonasi = isSudah ? 0 : jumlah - alokasi;
+    const alokasi = Number(formData.alokasi) || 0;
+    const sisaDonasi = jumlah - alokasi;
     const updated: TransaksiItem = {
       ...editingItem,
       tanggalPencairan: formData.tanggalPencairan,
@@ -451,12 +420,7 @@ export default function TransaksiYayasan() {
                 value={formData.statusImplementasi}
                 onChange={e => {
                   const status = e.target.value as TransaksiItem['statusImplementasi'];
-                  const jumlah = Number(formData.jumlahDonasi) || 0;
-                  if (status === 'Sudah Implementasi') {
-                    setFormData({ ...formData, statusImplementasi: status, alokasi: String(jumlah), sisaDonasi: '0' });
-                  } else {
-                    setFormData({ ...formData, statusImplementasi: status });
-                  }
+                  setFormData({ ...formData, statusImplementasi: status });
                 }}
                 className={styles.select}
               >
@@ -502,7 +466,7 @@ export default function TransaksiYayasan() {
             <ArrowDownIcon />
           </div>
           <div className={styles.statContent}>
-            <div className={styles.statTitle}>Total Dana Masuk</div>
+            <div className={styles.statTitle}>Total Jumlah Donasi</div>
             <div className={styles.statValue}>{formatRupiah(totalDanaMasuk)}</div>
           </div>
         </div>
@@ -511,7 +475,7 @@ export default function TransaksiYayasan() {
             <ArrowUpIcon />
           </div>
           <div className={styles.statContent}>
-            <div className={styles.statTitle}>Total Implementasi</div>
+            <div className={styles.statTitle}>Total Alokasi</div>
             <div className={styles.statValue}>{formatRupiah(totalImplementasi)}</div>
           </div>
         </div>
@@ -520,9 +484,8 @@ export default function TransaksiYayasan() {
             <WalletIcon />
           </div>
           <div className={styles.statContent}>
-            <div className={styles.statTitle}>Sisa Donasi</div>
+            <div className={styles.statTitle}>Sisa Implementasi</div>
             <div className={styles.statValue}>{formatRupiah(sisaTotal)}</div>
-            <div className={styles.statSubtext}>Masih tersedia di yayasan</div>
           </div>
         </div>
       </div>
@@ -570,7 +533,7 @@ export default function TransaksiYayasan() {
               <th>Jumlah Donasi</th>
               <th>Kategori</th>
               <th>Alokasi</th>
-              <th>Sisa Donasi</th>
+              <th>Sisa Implementasi</th>
               <th>Status Implementasi</th>
               <th>Aksi</th>
             </tr>
@@ -586,7 +549,7 @@ export default function TransaksiYayasan() {
               pagedData.map((item, index) => {
                 const alokasiVal = getItemAlokasi(item);
                 const sisaVal = (item.jumlahDonasi || 0) - alokasiVal;
-                const isSudah = sisaVal <= 0 || item.statusImplementasi === 'Sudah Implementasi';
+                const isSudah = item.statusImplementasi === 'Sudah Implementasi';
                 const statusText = isSudah ? 'Sudah Implementasi' : 'Belum Implementasi';
 
                 return (
@@ -683,7 +646,7 @@ export default function TransaksiYayasan() {
                 ['Kategori', viewingItem.kategori],
                 ['Jumlah Donasi', formatRupiah(viewingItem.jumlahDonasi)],
                 ['Alokasi', formatRupiah(viewingItem.alokasi)],
-                ['Sisa Donasi', formatRupiah(viewingItem.sisaDonasi)],
+                ['Sisa Implementasi', formatRupiah(viewingItem.sisaDonasi)],
                 ['Status', viewingItem.statusImplementasi],
               ].map(([label, val]) => (
                 <div key={label} className={styles.detailRow}>

@@ -357,42 +357,58 @@ export default function DataNonMedis() {
   const [editingItem, setEditingItem] = useState<TransaksiKategori | null>(null);
   const [deletingItem, setDeletingItem] = useState<TransaksiKategori | null>(null);
 
-  /* Form state */
-  const [formData, setFormData] = useState({
-    tanggal: '',
-    kategori: 'Mobil Siaga',
-    keterangan: '',
-    masuk: '',
-    keluar: '',
-    buktiUrl: '',
-    link: '',
-  });
-  const [previewUrl, setPreviewUrl] = useState<string>('');
-  const fileInputAddRef = useRef<HTMLInputElement>(null);
-  const fileInputEditRef = useRef<HTMLInputElement>(null);
-
-  /* Handle file upload → convert to base64 */
-  const handleFileChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const result = ev.target?.result as string;
-        setFormData((prev) => ({ ...prev, buktiUrl: result }));
-        setPreviewUrl(result);
-      };
-      reader.readAsDataURL(file);
-    },
-    []
-  );
-
-  const handleClearImage = () => {
-    setFormData((prev) => ({ ...prev, buktiUrl: '' }));
-    setPreviewUrl('');
-    if (fileInputAddRef.current) fileInputAddRef.current.value = '';
-    if (fileInputEditRef.current) fileInputEditRef.current.value = '';
+  /* Sub-row type for multi-row form */
+  type SubRow = {
+    id: string;
+    tanggal: string;
+    kategori: string;
+    link: string;
+    masuk: string;
+    keluar: string;
+    buktiUrl: string;
+    previewUrl: string;
+    statusImplementasi: 'Sudah Implementasi' | 'Belum Implementasi';
   };
+
+  function newSubRow(defaultTanggal?: string): SubRow {
+    const today = defaultTanggal || new Date().toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    return {
+      id: Math.random().toString(36).slice(2),
+      tanggal: today,
+      kategori: categoryOptions[0] || 'Mobil Siaga',
+      link: '',
+      masuk: '',
+      keluar: '',
+      buktiUrl: '',
+      previewUrl: '',
+      statusImplementasi: 'Belum Implementasi',
+    };
+  }
+
+  /* Multi sub-rows state for Add modal */
+  const [addNamaPasien, setAddNamaPasien] = useState('');
+  const [addSubRows, setAddSubRows] = useState<SubRow[]>([]);
+  const addFileRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  /* Multi sub-rows state for Edit modal */
+  type EditSubRow = {
+    dbId?: number;
+    id: string;
+    tanggal: string;
+    kategori: string;
+    link: string;
+    masuk: string;
+    keluar: string;
+    buktiUrl: string;
+    previewUrl: string;
+    statusImplementasi: 'Sudah Implementasi' | 'Belum Implementasi';
+  };
+
+  const [editNamaPasien, setEditNamaPasien] = useState('');
+  const [editGroupId, setEditGroupId] = useState<number | null>(null);
+  const [editSubRows, setEditSubRows] = useState<EditSubRow[]>([]);
+  const [editDeletedDbIds, setEditDeletedDbIds] = useState<number[]>([]);
+  const editFileRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   /* Total Donasi Masuk dari Transaksi Yayasan (realtime) */
   const totalDonasiYayasan = useMemo(() => {
@@ -431,40 +447,23 @@ export default function DataNonMedis() {
       const term = searchTerm.toLowerCase();
       d = d.filter(
         (t) =>
-          t.keterangan.toLowerCase().includes(term) ||
+          (t.namaPasien || '').toLowerCase().includes(term) ||
+          (t.keterangan || '').toLowerCase().includes(term) ||
           t.kategori.toLowerCase().includes(term) ||
           t.tanggal.toLowerCase().includes(term)
       );
     }
 
-    return withSaldo(d, totalDonasiYayasan);
-  }, [dataList, filterKategori, filterTanggal, filterJenis, searchTerm, totalDonasiYayasan]);
+    return withSaldo(d, 0);
+  }, [dataList, filterKategori, filterTanggal, filterJenis, searchTerm]);
 
-  const totalImplementasiYayasan = useMemo(() => {
-    let filtered = transaksiYayasanList;
-    if (filterKategori !== 'Semua Kategori') {
-      filtered = filtered.filter(
-        (t) => (t.kategori || '').toLowerCase().trim() === filterKategori.toLowerCase().trim()
-      );
-    }
-    return filtered.reduce((s, t) => {
-      if (t.statusImplementasi === 'Sudah Implementasi') {
-        return s + (t.jumlahDonasi || 0);
-      }
-      return s + (t.alokasi || 0);
-    }, 0);
-  }, [transaksiYayasanList, filterKategori]);
-
-  const totalMasukNonMedis = useMemo(() => {
+  const totalMasuk = useMemo(() => {
     return filteredData.reduce((s, t) => s + (t.masuk ?? 0), 0);
   }, [filteredData]);
 
-  const totalMasuk = totalDonasiYayasan + totalMasukNonMedis;
-
   const totalKeluar = useMemo(() => {
-    const keluarNonMedis = filteredData.reduce((s, t) => s + (t.keluar ?? 0), 0);
-    return Math.max(keluarNonMedis, totalImplementasiYayasan);
-  }, [filteredData, totalImplementasiYayasan]);
+    return filteredData.reduce((s, t) => s + (t.keluar ?? 0), 0);
+  }, [filteredData]);
 
   const saldo = totalMasuk - totalKeluar;
 
@@ -492,81 +491,151 @@ export default function DataNonMedis() {
   const startRecord = totalRecords === 0 ? 1 : (currentPage - 1) * ITEMS_PER_PAGE + 1;
   const endRecord = totalRecords === 0 ? 0 : Math.min(currentPage * ITEMS_PER_PAGE, totalRecords);
 
-  /* CRUD handlers */
-  function resetForm(defaultKategori?: string) {
-    const today = new Date().toLocaleDateString('id-ID', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    });
-    setFormData({
-      tanggal: today,
-      kategori: defaultKategori ?? (categoryOptions[0] || 'Mobil Siaga'),
-      keterangan: '',
-      masuk: '',
-      keluar: '',
-      buktiUrl: '',
-      link: '',
-    });
-    setPreviewUrl('');
-  }
-
   function handleOpenAdd() {
+    const today = new Date().toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' });
     const autoKat = filterKategori !== 'Semua Kategori' ? filterKategori : (categoryOptions[0] || 'Mobil Siaga');
-    resetForm(autoKat);
+    setAddNamaPasien('');
+    setAddSubRows([{ ...newSubRow(today), kategori: autoKat }]);
     setIsAddModalOpen(true);
   }
 
   async function handleSaveAdd(e: React.FormEvent) {
     e.preventDefault();
-    const newItem = await addDataNonMedis({
-      tanggal: formData.tanggal || new Date().toLocaleDateString('id-ID'),
-      kategori: formData.kategori,
-      keterangan: formData.keterangan,
-      masuk: formData.masuk ? Number(formData.masuk) : null,
-      keluar: formData.keluar ? Number(formData.keluar) : null,
-      buktiType: formData.buktiUrl ? 'image' : null,
-      buktiUrl: formData.buktiUrl,
-      link: formData.link,
-    });
-    setDataList((prev) => [newItem, ...prev]);
+    if (addSubRows.length === 0) return;
+
+    /* Calculate next noGroup value */
+    const maxGroup = dataList.reduce((m, t) => Math.max(m, t.noGroup ?? 0), 0);
+    const groupId = maxGroup + 1;
+
+    const saved: TransaksiKategori[] = [];
+    for (const sub of addSubRows) {
+      const newItem = await addDataNonMedis({
+        tanggal: sub.tanggal || new Date().toLocaleDateString('id-ID'),
+        kategori: sub.kategori,
+        keterangan: '',
+        masuk: sub.masuk ? Number(sub.masuk) : null,
+        keluar: sub.keluar ? Number(sub.keluar) : null,
+        buktiType: sub.buktiUrl ? 'image' : null,
+        buktiUrl: sub.buktiUrl,
+        link: sub.link,
+        namaPasien: addNamaPasien,
+        noGroup: groupId,
+        statusImplementasi: sub.statusImplementasi || 'Belum Implementasi',
+      });
+      saved.push(newItem);
+    }
+    setDataList((prev) => [...saved, ...prev]);
     setIsAddModalOpen(false);
-    setPreviewUrl('');
     setCurrentPage(1);
   }
 
   function handleOpenEdit(item: TransaksiKategori) {
-    setEditingItem(item);
-    setFormData({
-      tanggal: item.tanggal,
-      kategori: item.kategori,
-      keterangan: item.keterangan,
-      masuk: item.masuk !== null ? String(item.masuk) : '',
-      keluar: item.keluar !== null ? String(item.keluar) : '',
-      buktiUrl: item.buktiUrl,
-      link: item.link || '',
-    });
-    setPreviewUrl(item.buktiUrl || '');
+    let groupMembers: TransaksiKategori[] = [];
+    if (item.namaPasien?.trim()) {
+      groupMembers = dataList.filter(
+        (t) => (t.namaPasien || '').trim().toLowerCase() === item.namaPasien!.trim().toLowerCase()
+      );
+    } else if (item.noGroup != null) {
+      groupMembers = dataList.filter((t) => t.noGroup === item.noGroup);
+    }
+    if (groupMembers.length === 0) {
+      groupMembers = [item];
+    }
+
+    const first = groupMembers[0];
+    setEditGroupId(first.noGroup ?? null);
+    setEditNamaPasien(first.namaPasien || '');
+    setEditDeletedDbIds([]);
+    setEditSubRows(
+      groupMembers.map((m) => ({
+        dbId: m.id,
+        id: String(m.id || Math.random().toString(36).slice(2)),
+        tanggal: m.tanggal || '',
+        kategori: m.kategori || categoryOptions[0] || 'Mobil Siaga',
+        link: m.link || '',
+        masuk: m.masuk !== null && m.masuk !== undefined ? String(m.masuk) : '',
+        keluar: m.keluar !== null && m.keluar !== undefined ? String(m.keluar) : '',
+        buktiUrl: m.buktiUrl || '',
+        previewUrl: m.buktiUrl || '',
+        statusImplementasi: m.statusImplementasi || 'Belum Implementasi',
+      }))
+    );
+    setEditingItem(first);
   }
 
   async function handleSaveEdit(e: React.FormEvent) {
     e.preventDefault();
-    if (!editingItem) return;
-    const updated: TransaksiKategori = {
-      ...editingItem,
-      tanggal: formData.tanggal,
-      kategori: formData.kategori,
-      keterangan: formData.keterangan,
-      masuk: formData.masuk ? Number(formData.masuk) : null,
-      keluar: formData.keluar ? Number(formData.keluar) : null,
-      buktiType: formData.buktiUrl ? 'image' : null,
-      buktiUrl: formData.buktiUrl,
-      link: formData.link,
-    };
-    await updateDataNonMedis(updated);
-    setDataList((prev) => prev.map((t) => (t.id === editingItem.id ? updated : t)));
+    if (!editingItem || editSubRows.length === 0) return;
+
+    // 1. Delete removed DB rows
+    for (const dbId of editDeletedDbIds) {
+      await deleteDataNonMedis(dbId);
+    }
+
+    // 2. Maintain / assign group ID if multiple rows
+    let groupId = editGroupId;
+    if (groupId == null && editSubRows.length > 1) {
+      const maxGroup = dataList.reduce((m, t) => Math.max(m, t.noGroup ?? 0), 0);
+      groupId = maxGroup + 1;
+    }
+
+    const updatedOrNewList: TransaksiKategori[] = [];
+    for (const sub of editSubRows) {
+      if (sub.dbId) {
+        const updated: TransaksiKategori = {
+          id: sub.dbId,
+          tanggal: sub.tanggal || new Date().toLocaleDateString('id-ID'),
+          namaPasien: editNamaPasien,
+          kategori: sub.kategori,
+          keterangan: '',
+          masuk: sub.masuk ? Number(sub.masuk) : null,
+          keluar: sub.keluar ? Number(sub.keluar) : null,
+          buktiType: sub.buktiUrl ? 'image' : null,
+          buktiUrl: sub.buktiUrl,
+          link: sub.link,
+          noGroup: groupId ?? undefined,
+          statusImplementasi: sub.statusImplementasi || 'Belum Implementasi',
+        };
+        await updateDataNonMedis(updated);
+        updatedOrNewList.push(updated);
+      } else {
+        const created = await addDataNonMedis({
+          tanggal: sub.tanggal || new Date().toLocaleDateString('id-ID'),
+          namaPasien: editNamaPasien,
+          kategori: sub.kategori,
+          keterangan: '',
+          masuk: sub.masuk ? Number(sub.masuk) : null,
+          keluar: sub.keluar ? Number(sub.keluar) : null,
+          buktiType: sub.buktiUrl ? 'image' : null,
+          buktiUrl: sub.buktiUrl,
+          link: sub.link,
+          noGroup: groupId ?? undefined,
+          statusImplementasi: sub.statusImplementasi || 'Belum Implementasi',
+        });
+        updatedOrNewList.push(created);
+      }
+    }
+
+    const deletedSet = new Set(editDeletedDbIds);
+    const updatedMap = new Map<number, TransaksiKategori>();
+    updatedOrNewList.forEach((it) => {
+      if (it.id && !deletedSet.has(it.id)) {
+        updatedMap.set(it.id, it);
+      }
+    });
+
+    setDataList((prev) => {
+      const remainingOld = prev
+        .filter((t) => !deletedSet.has(t.id))
+        .map((t) => updatedMap.get(t.id) || t);
+      const existingIds = new Set(remainingOld.map((t) => t.id));
+      const newlyCreated = updatedOrNewList.filter((t) => !existingIds.has(t.id));
+      return [...newlyCreated, ...remainingOld];
+    });
+
     setEditingItem(null);
-    setPreviewUrl('');
+    setEditSubRows([]);
+    setEditDeletedDbIds([]);
   }
 
   async function handleConfirmDelete() {
@@ -723,15 +792,14 @@ export default function DataNonMedis() {
           </div>
         </div>
 
-        {/* Card 3: Saldo */}
+        {/* Card 3: Sisa Saldo */}
         <div className={styles.summaryCard}>
           <div className={`${styles.summaryIconWrap} ${styles.iconGreen}`}>
             <WalletIcon />
           </div>
           <div className={styles.summaryInfo}>
-            <div className={styles.summaryLabel}>Saldo</div>
+            <div className={styles.summaryLabel}>Sisa Saldo</div>
             <div className={styles.summaryValue}>{formatRp(saldo)}</div>
-            <div className={styles.summaryNote}>Pemasukan - Pengeluaran</div>
           </div>
         </div>
       </div>
@@ -887,6 +955,7 @@ export default function DataNonMedis() {
           <thead>
             <tr>
               <th className={styles.colNo}>No.</th>
+              <th className={styles.colNamaPasien}>Nama Pasien</th>
               <th>
                 <span className={styles.sortHeader}>
                   Tanggal <ChevronUpDownIcon />
@@ -894,7 +963,6 @@ export default function DataNonMedis() {
               </th>
               <th>Kategori</th>
               <th>Link KitaBisa</th>
-              <th>Keterangan</th>
               <th>
                 <span className={styles.sortHeader}>
                   Masuk <ChevronUpDownIcon />
@@ -910,6 +978,7 @@ export default function DataNonMedis() {
                   Saldo <ChevronUpDownIcon />
                 </span>
               </th>
+              <th>Status Implementasi</th>
               <th>Bukti</th>
               <th>Aksi</th>
             </tr>
@@ -917,84 +986,163 @@ export default function DataNonMedis() {
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={10} style={{ textAlign: 'center', padding: '30px', color: '#0284c7' }}>
+                <td colSpan={11} style={{ textAlign: 'center', padding: '30px', color: '#0284c7' }}>
                   Memuat data transaksi...
                 </td>
               </tr>
             ) : paginatedData.length === 0 ? (
               <tr>
-                <td colSpan={10} style={{ textAlign: 'center', padding: '30px', color: '#64748b' }}>
+                <td colSpan={11} style={{ textAlign: 'center', padding: '30px', color: '#64748b' }}>
                   Tidak ada transaksi yang ditemukan.
                 </td>
               </tr>
-            ) : (
-              paginatedData.map((item, index) => {
-                const itemIndex = (currentPage - 1) * ITEMS_PER_PAGE + index + 1;
-                const activeLink = item.link || getKitabisaLink(item.kategori);
-                return (
-                  <tr key={item.id}>
-                    <td className={styles.colNo}>{itemIndex}</td>
-                    <td className={styles.colTanggal}>{item.tanggal}</td>
-                    <td>
-                      <span className={`${styles.categoryBadge} ${getBadgeClass(item.kategori)}`}>
-                        {item.kategori}
-                      </span>
-                    </td>
-                    <td>
-                      {activeLink ? (
-                        <a
-                          href={sanitizeUrl(activeLink)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className={styles.kitabisaLinkBtn}
-                          title="Lihat Link KitaBisa / Campaign"
+            ) : (() => {
+              /* ── Build grouped rows ── */
+              type GroupedRow = {
+                groupKey: string;
+                items: (TransaksiKategori & { saldo: number; _displayIndex: number })[];
+              };
+
+              /* Assign display index first */
+              const indexedData = paginatedData.map((item, i) => ({
+                ...item,
+                _displayIndex: (currentPage - 1) * ITEMS_PER_PAGE + i + 1,
+              }));
+
+              /* Group by namaPasien (if set) else noGroup else each item is its own group */
+              const groups: GroupedRow[] = [];
+              const seen = new Map<string, GroupedRow>();
+              indexedData.forEach((item) => {
+                const key = item.namaPasien?.trim()
+                  ? `pasien-${item.namaPasien.trim().toLowerCase()}`
+                  : item.noGroup != null
+                  ? `grp-${item.noGroup}`
+                  : `solo-${item.id}`;
+                if (!seen.has(key)) {
+                  const g: GroupedRow = { groupKey: key, items: [] };
+                  groups.push(g);
+                  seen.set(key, g);
+                }
+                seen.get(key)!.items.push(item);
+              });
+
+              /* Running display number per group */
+              let displayNo = (currentPage - 1) * ITEMS_PER_PAGE + 1;
+
+              return groups.map((group) => {
+                const rowSpan = group.items.length;
+                const firstItem = group.items[0];
+                const groupNo = displayNo;
+                displayNo++;
+
+                return group.items.map((item, subIdx) => {
+                  const activeLink = item.link || getKitabisaLink(item.kategori);
+                  const isFirst = subIdx === 0;
+                  return (
+                    <tr
+                      key={item.id}
+                      className={rowSpan > 1 ? styles.groupedRow : ''}
+                    >
+                      {/* No. + Nama Pasien — only render on first sub-row with rowspan */}
+                      {isFirst && (
+                        <>
+                          <td
+                            className={styles.colNo}
+                            rowSpan={rowSpan}
+                            style={rowSpan > 1 ? { verticalAlign: 'middle', borderRight: '2px solid #e2e8f0' } : undefined}
+                          >
+                            {groupNo}
+                          </td>
+                          <td
+                            className={styles.colNamaPasien}
+                            rowSpan={rowSpan}
+                            style={rowSpan > 1 ? { verticalAlign: 'middle', borderRight: '2px solid #e2e8f0', fontWeight: 600 } : undefined}
+                          >
+                            {firstItem.namaPasien || <span className={styles.amountDash}>-</span>}
+                          </td>
+                        </>
+                      )}
+                      <td className={styles.colTanggal}>{item.tanggal}</td>
+                      <td>
+                        <span className={`${styles.categoryBadge} ${getBadgeClass(item.kategori)}`}>
+                          {item.kategori}
+                        </span>
+                      </td>
+                      <td>
+                        {(() => {
+                          const linksList = (activeLink || '')
+                            .split(/[\s,\n]+/)
+                            .map((l) => l.trim())
+                            .filter((l) => l.length > 0);
+
+                          if (linksList.length === 0) {
+                            return <span className={styles.amountDash}>-</span>;
+                          }
+
+                          return (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                              {linksList.map((lnk, lIdx) => (
+                                <a
+                                  key={lIdx}
+                                  href={sanitizeUrl(lnk)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className={styles.kitabisaLinkBtn}
+                                  title={`Lihat Link KitaBisa ${lIdx + 1}`}
+                                >
+                                  <ExternalLinkIcon />
+                                  <span>KitaBisa{linksList.length > 1 ? ` #${lIdx + 1}` : ''}</span>
+                                </a>
+                              ))}
+                            </div>
+                          );
+                        })()}
+                      </td>
+                      <td className={item.masuk !== null ? styles.amountPos : styles.amountDash}>
+                        {item.masuk !== null ? formatRp(item.masuk) : '-'}
+                      </td>
+                      <td className={item.keluar !== null ? styles.amountPos : styles.amountDash}>
+                        {item.keluar !== null ? formatRp(item.keluar) : '-'}
+                      </td>
+                      <td className={item.saldo >= 0 ? styles.amountPos : styles.amountNeg}>
+                        {item.saldo < 0 ? '-' + formatRp(Math.abs(item.saldo)) : formatRp(item.saldo)}
+                      </td>
+                      <td>
+                        <span className={`${styles.statusBadge} ${item.statusImplementasi === 'Sudah Implementasi' ? styles.statusSudah : styles.statusBelum}`}>
+                          <span className={styles.statusDot} />
+                          {item.statusImplementasi || 'Belum Implementasi'}
+                        </span>
+                      </td>
+                      <td>
+                        {item.buktiType === 'image' && item.buktiUrl ? (
+                          <a href={sanitizeUrl(item.buktiUrl)} target="_blank" rel="noopener noreferrer" className={styles.thumbLink}>
+                            <img src={item.buktiUrl} alt="bukti" className={styles.thumbImg} />
+                          </a>
+                        ) : (
+                          <span className={styles.amountDash}>-</span>
+                        )}
+                      </td>
+                      <td className={styles.actionsCell}>
+                        <button
+                          className={`${styles.actionIconBtn} ${styles.btnEdit}`}
+                          title="Edit Sub-baris"
+                          onClick={() => handleOpenEdit(item)}
                         >
-                          <ExternalLinkIcon />
-                          <span>KitaBisa</span>
-                        </a>
-                      ) : (
-                        <span className={styles.amountDash}>-</span>
-                      )}
-                    </td>
-                    <td>{item.keterangan}</td>
-                    <td className={item.masuk !== null ? styles.amountPos : styles.amountDash}>
-                      {item.masuk !== null ? formatRp(item.masuk) : '-'}
-                    </td>
-                    <td className={item.keluar !== null ? styles.amountPos : styles.amountDash}>
-                      {item.keluar !== null ? formatRp(item.keluar) : '-'}
-                    </td>
-                    <td className={item.saldo >= 0 ? styles.amountPos : styles.amountNeg}>
-                      {item.saldo < 0 ? '-' + formatRp(Math.abs(item.saldo)) : formatRp(item.saldo)}
-                    </td>
-                    <td>
-                      {item.buktiType === 'image' && item.buktiUrl ? (
-                        <a href={sanitizeUrl(item.buktiUrl)} target="_blank" rel="noopener noreferrer" className={styles.thumbLink}>
-                          <img src={item.buktiUrl} alt="bukti" className={styles.thumbImg} />
-                        </a>
-                      ) : (
-                        <span className={styles.amountDash}>-</span>
-                      )}
-                    </td>
-                    <td className={styles.actionsCell}>
-                      <button
-                        className={`${styles.actionIconBtn} ${styles.btnEdit}`}
-                        title="Edit Transaksi"
-                        onClick={() => handleOpenEdit(item)}
-                      >
-                        <EditIcon />
-                      </button>
-                      <button
-                        className={`${styles.actionIconBtn} ${styles.btnDelete}`}
-                        title="Hapus Transaksi"
-                        onClick={() => setDeletingItem(item)}
-                      >
-                        <TrashIcon />
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
+                          <EditIcon />
+                        </button>
+                        <button
+                          className={`${styles.actionIconBtn} ${styles.btnDelete}`}
+                          title="Hapus Sub-baris"
+                          onClick={() => setDeletingItem(item)}
+                        >
+                          <TrashIcon />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                });
+              });
+            })()}
           </tbody>
         </table>
 
@@ -1015,142 +1163,226 @@ export default function DataNonMedis() {
         <span className={styles.brandNote}>UNTUK TEMAN &bull; Membantu lebih banyak, bersama.</span>
       </div>
 
-      {/* ── Modal Tambah Transaksi ── */}
+      {/* ── Modal Tambah Transaksi (Multi Sub-baris) ── */}
       {isAddModalOpen && (
         <div className={styles.modalOverlay} onClick={() => setIsAddModalOpen(false)}>
-          <div className={styles.modalCard} onClick={(e) => e.stopPropagation()}>
+          <div className={`${styles.modalCard} ${styles.modalCardWide}`} onClick={(e) => e.stopPropagation()}>
             <div className={styles.modalHeader}>
               <h3 className={styles.modalTitle}>Tambah Transaksi</h3>
               <button className={styles.closeBtn} onClick={() => setIsAddModalOpen(false)}>&times;</button>
             </div>
             <form onSubmit={handleSaveAdd}>
               <div className={styles.modalBody}>
-                <div className={styles.formRow}>
+                {/* ── Header grup: Nama Pasien ── */}
+                <div className={styles.groupHeaderBox}>
                   <div className={styles.formGroup}>
-                    <label className={styles.label}>Tanggal</label>
+                    <label className={styles.label}>Nama Pasien</label>
                     <input
                       type="text"
-                      required
-                      placeholder="DD/MM/YYYY"
-                      value={formData.tanggal}
-                      onChange={(e) => setFormData({ ...formData, tanggal: e.target.value })}
-                      className={styles.input}
-                    />
-                  </div>
-                  <div className={styles.formGroup}>
-                    <label className={styles.label}>Kategori</label>
-                    <input
-                      type="text"
-                      required
-                      list="kategori-list"
-                      placeholder="Contoh: Mobil Siaga"
-                      value={formData.kategori}
-                      onChange={(e) => setFormData({ ...formData, kategori: e.target.value })}
-                      className={styles.input}
-                    />
-                    <datalist id="kategori-list">
-                      {categoryOptions.map((k) => (
-                        <option key={k} value={k} />
-                      ))}
-                    </datalist>
-                  </div>
-                </div>
-
-                <div className={styles.formGroup}>
-                  <label className={styles.label}>Link KitaBisa / Campaign (Opsional)</label>
-                  <input
-                    type="text"
-                    placeholder="https://kitabisa.com/..."
-                    value={formData.link}
-                    onChange={(e) => setFormData({ ...formData, link: e.target.value })}
-                    className={styles.input}
-                  />
-                </div>
-
-                <div className={styles.formGroup}>
-                  <label className={styles.label}>Keterangan</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Contoh: Donasi dari Bapak Andi"
-                    value={formData.keterangan}
-                    onChange={(e) => setFormData({ ...formData, keterangan: e.target.value })}
-                    className={styles.input}
-                  />
-                </div>
-
-                <div className={styles.formRow}>
-                  <div className={styles.formGroup}>
-                    <label className={styles.label}>Masuk (Rp)</label>
-                    <input
-                      type="number"
-                      placeholder="0"
-                      value={formData.masuk}
-                      onChange={(e) => setFormData({ ...formData, masuk: e.target.value, keluar: '' })}
-                      className={styles.input}
-                    />
-                  </div>
-                  <div className={styles.formGroup}>
-                    <label className={styles.label}>Keluar (Rp)</label>
-                    <input
-                      type="number"
-                      placeholder="0"
-                      value={formData.keluar}
-                      onChange={(e) => setFormData({ ...formData, keluar: e.target.value, masuk: '' })}
+                      placeholder="Contoh: Budi Santoso"
+                      value={addNamaPasien}
+                      onChange={(e) => setAddNamaPasien(e.target.value)}
                       className={styles.input}
                     />
                   </div>
                 </div>
 
-                <div className={styles.formGroup}>
-                  <label className={styles.label}>Bukti Gambar (JPG/PNG, opsional)</label>
-                  <div
-                    className={styles.uploadZone}
-                    onClick={() => fileInputAddRef.current?.click()}
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      const file = e.dataTransfer.files?.[0];
-                      if (!file) return;
-                      const reader = new FileReader();
-                      reader.onload = (ev) => {
-                        const result = ev.target?.result as string;
-                        setFormData((prev) => ({ ...prev, buktiUrl: result }));
-                        setPreviewUrl(result);
-                      };
-                      reader.readAsDataURL(file);
+                {/* ── Sub-baris list ── */}
+                <div className={styles.subRowsLabel}>
+                  <span>Detail Transaksi ({addSubRows.length} baris)</span>
+                  <button
+                    type="button"
+                    className={styles.addSubRowBtn}
+                    onClick={() => {
+                      const lastDate = addSubRows[addSubRows.length - 1]?.tanggal;
+                      setAddSubRows((prev) => [...prev, newSubRow(lastDate)]);
                     }}
                   >
-                    {previewUrl ? (
-                      <div className={styles.previewWrap}>
-                        <img src={previewUrl} alt="preview" className={styles.previewImg} />
+                    <PlusIcon /> Tambah Baris
+                  </button>
+                </div>
+
+                {addSubRows.map((sub, si) => (
+                  <div key={sub.id} className={styles.subRowCard}>
+                    <div className={styles.subRowCardHeader}>
+                      <span className={styles.subRowNum}>Baris {si + 1}</span>
+                      {addSubRows.length > 1 && (
                         <button
                           type="button"
-                          className={styles.removeImgBtn}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleClearImage();
-                          }}
+                          className={styles.removeSubRowBtn}
+                          onClick={() => setAddSubRows((prev) => prev.filter((_, i) => i !== si))}
                         >
-                          &times; Hapus gambar
+                          <TrashIcon />
                         </button>
+                      )}
+                    </div>
+
+                    <div className={styles.formRow}>
+                      <div className={styles.formGroup}>
+                        <label className={styles.label}>Tanggal</label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="DD/MM/YYYY"
+                          value={sub.tanggal}
+                          onChange={(e) =>
+                            setAddSubRows((prev) =>
+                              prev.map((r, i) => (i === si ? { ...r, tanggal: e.target.value } : r))
+                            )
+                          }
+                          className={styles.input}
+                        />
                       </div>
-                    ) : (
-                      <div className={styles.uploadPlaceholder}>
-                        <UploadIcon />
-                        <span className={styles.uploadText}>Klik atau seret gambar ke sini</span>
-                        <span className={styles.uploadHint}>JPG, PNG, WEBP — maks 5 MB</span>
+                      <div className={styles.formGroup}>
+                        <label className={styles.label}>Kategori</label>
+                        <input
+                          type="text"
+                          required
+                          list={`kat-list-${sub.id}`}
+                          placeholder="Contoh: Mobil Siaga"
+                          value={sub.kategori}
+                          onChange={(e) =>
+                            setAddSubRows((prev) =>
+                              prev.map((r, i) => (i === si ? { ...r, kategori: e.target.value } : r))
+                            )
+                          }
+                          className={styles.input}
+                        />
+                        <datalist id={`kat-list-${sub.id}`}>
+                          {categoryOptions.map((k) => (
+                            <option key={k} value={k} />
+                          ))}
+                        </datalist>
                       </div>
-                    )}
+                    </div>
+
+                    <div className={styles.formGroup}>
+                      <label className={styles.label}>Link KitaBisa (Opsional)</label>
+                      <input
+                        type="text"
+                        placeholder="https://kitabisa.com/..."
+                        value={sub.link}
+                        onChange={(e) =>
+                          setAddSubRows((prev) =>
+                            prev.map((r, i) => (i === si ? { ...r, link: e.target.value } : r))
+                          )
+                        }
+                        className={styles.input}
+                      />
+                    </div>
+
+                    <div className={styles.formRow}>
+                      <div className={styles.formGroup}>
+                        <label className={styles.label}>Masuk (Rp)</label>
+                        <input
+                          type="number"
+                          placeholder="0"
+                          value={sub.masuk}
+                          onChange={(e) =>
+                            setAddSubRows((prev) =>
+                              prev.map((r, i) => (i === si ? { ...r, masuk: e.target.value } : r))
+                            )
+                          }
+                          className={styles.input}
+                        />
+                      </div>
+                      <div className={styles.formGroup}>
+                        <label className={styles.label}>Keluar (Rp)</label>
+                        <input
+                          type="number"
+                          placeholder="0"
+                          value={sub.keluar}
+                          onChange={(e) =>
+                            setAddSubRows((prev) =>
+                              prev.map((r, i) => (i === si ? { ...r, keluar: e.target.value } : r))
+                            )
+                          }
+                          className={styles.input}
+                        />
+                      </div>
+                    </div>
+
+                    <div className={styles.formGroup}>
+                      <label className={styles.label}>Status Implementasi</label>
+                      <select
+                        value={sub.statusImplementasi || 'Belum Implementasi'}
+                        onChange={(e) =>
+                          setAddSubRows((prev) =>
+                            prev.map((r, i) =>
+                              i === si
+                                ? { ...r, statusImplementasi: e.target.value as 'Sudah Implementasi' | 'Belum Implementasi' }
+                                : r
+                            )
+                          )
+                        }
+                        className={styles.selectInput}
+                      >
+                        <option value="Sudah Implementasi">Sudah Implementasi</option>
+                        <option value="Belum Implementasi">Belum Implementasi</option>
+                      </select>
+                    </div>
+
+                    {/* Bukti Upload */}
+                    <div className={styles.formGroup}>
+                      <label className={styles.label}>Bukti Gambar (Opsional)</label>
+                      <div
+                        className={styles.uploadZone}
+                        onClick={() => addFileRefs.current[si]?.click()}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          const file = e.dataTransfer.files?.[0];
+                          if (!file) return;
+                          const reader = new FileReader();
+                          reader.onload = (ev) => {
+                            const result = ev.target?.result as string;
+                            setAddSubRows((prev) => prev.map((r, i) => i === si ? { ...r, buktiUrl: result, previewUrl: result } : r));
+                          };
+                          reader.readAsDataURL(file);
+                        }}
+                      >
+                        {sub.previewUrl ? (
+                          <div className={styles.previewWrap}>
+                            <img src={sub.previewUrl} alt="preview" className={styles.previewImg} />
+                            <button
+                              type="button"
+                              className={styles.removeImgBtn}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setAddSubRows((prev) => prev.map((r, i) => i === si ? { ...r, buktiUrl: '', previewUrl: '' } : r));
+                                if (addFileRefs.current[si]) addFileRefs.current[si]!.value = '';
+                              }}
+                            >
+                              &times; Hapus gambar
+                            </button>
+                          </div>
+                        ) : (
+                          <div className={styles.uploadPlaceholder}>
+                            <UploadIcon />
+                            <span className={styles.uploadText}>Klik atau seret gambar ke sini</span>
+                            <span className={styles.uploadHint}>JPG, PNG, WEBP — maks 5 MB</span>
+                          </div>
+                        )}
+                      </div>
+                      <input
+                        ref={(el) => { addFileRefs.current[si] = el; }}
+                        type="file"
+                        accept="image/jpeg,image/jpg,image/png,image/webp"
+                        style={{ display: 'none' }}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          const reader = new FileReader();
+                          reader.onload = (ev) => {
+                            const result = ev.target?.result as string;
+                            setAddSubRows((prev) => prev.map((r, i) => i === si ? { ...r, buktiUrl: result, previewUrl: result } : r));
+                          };
+                          reader.readAsDataURL(file);
+                        }}
+                      />
+                    </div>
                   </div>
-                  <input
-                    ref={fileInputAddRef}
-                    type="file"
-                    accept="image/jpeg,image/jpg,image/png,image/webp"
-                    style={{ display: 'none' }}
-                    onChange={handleFileChange}
-                  />
-                </div>
+                ))}
               </div>
 
               <div className={styles.modalFooter}>
@@ -1158,7 +1390,7 @@ export default function DataNonMedis() {
                   Batal
                 </button>
                 <button type="submit" className={styles.submitBtn}>
-                  Simpan Transaksi
+                  Simpan {addSubRows.length > 1 ? `${addSubRows.length} Baris` : 'Transaksi'}
                 </button>
               </div>
             </form>
@@ -1166,138 +1398,257 @@ export default function DataNonMedis() {
         </div>
       )}
 
-      {/* ── Modal Edit Transaksi ── */}
+      {/* ── Modal Edit Transaksi (Multi Sub-baris Group Edit) ── */}
       {editingItem && (
         <div className={styles.modalOverlay} onClick={() => setEditingItem(null)}>
-          <div className={styles.modalCard} onClick={(e) => e.stopPropagation()}>
+          <div className={`${styles.modalCard} ${styles.modalCardWide}`} onClick={(e) => e.stopPropagation()}>
             <div className={styles.modalHeader}>
               <h3 className={styles.modalTitle}>Edit Transaksi</h3>
               <button className={styles.closeBtn} onClick={() => setEditingItem(null)}>&times;</button>
             </div>
             <form onSubmit={handleSaveEdit}>
               <div className={styles.modalBody}>
-                <div className={styles.formRow}>
+                {/* ── Header grup: Nama Pasien ── */}
+                <div className={styles.groupHeaderBox}>
                   <div className={styles.formGroup}>
-                    <label className={styles.label}>Tanggal</label>
+                    <label className={styles.label}>Nama Pasien</label>
                     <input
                       type="text"
-                      required
-                      value={formData.tanggal}
-                      onChange={(e) => setFormData({ ...formData, tanggal: e.target.value })}
-                      className={styles.input}
-                    />
-                  </div>
-                  <div className={styles.formGroup}>
-                    <label className={styles.label}>Kategori</label>
-                    <input
-                      type="text"
-                      required
-                      list="kategori-list-edit"
-                      placeholder="Contoh: Mobil Siaga"
-                      value={formData.kategori}
-                      onChange={(e) => setFormData({ ...formData, kategori: e.target.value })}
-                      className={styles.input}
-                    />
-                    <datalist id="kategori-list-edit">
-                      {categoryOptions.map((k) => (
-                        <option key={k} value={k} />
-                      ))}
-                    </datalist>
-                  </div>
-                </div>
-
-                <div className={styles.formGroup}>
-                  <label className={styles.label}>Link KitaBisa / Campaign (Opsional)</label>
-                  <input
-                    type="text"
-                    placeholder="https://kitabisa.com/..."
-                    value={formData.link}
-                    onChange={(e) => setFormData({ ...formData, link: e.target.value })}
-                    className={styles.input}
-                  />
-                </div>
-
-                <div className={styles.formGroup}>
-                  <label className={styles.label}>Keterangan</label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.keterangan}
-                    onChange={(e) => setFormData({ ...formData, keterangan: e.target.value })}
-                    className={styles.input}
-                  />
-                </div>
-
-                <div className={styles.formRow}>
-                  <div className={styles.formGroup}>
-                    <label className={styles.label}>Masuk (Rp)</label>
-                    <input
-                      type="number"
-                      value={formData.masuk}
-                      onChange={(e) => setFormData({ ...formData, masuk: e.target.value })}
-                      className={styles.input}
-                    />
-                  </div>
-                  <div className={styles.formGroup}>
-                    <label className={styles.label}>Keluar (Rp)</label>
-                    <input
-                      type="number"
-                      value={formData.keluar}
-                      onChange={(e) => setFormData({ ...formData, keluar: e.target.value })}
+                      placeholder="Contoh: Budi Santoso"
+                      value={editNamaPasien}
+                      onChange={(e) => setEditNamaPasien(e.target.value)}
                       className={styles.input}
                     />
                   </div>
                 </div>
 
-                <div className={styles.formGroup}>
-                  <label className={styles.label}>Bukti Gambar (JPG/PNG)</label>
-                  <div
-                    className={styles.uploadZone}
-                    onClick={() => fileInputEditRef.current?.click()}
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      const file = e.dataTransfer.files?.[0];
-                      if (!file) return;
-                      const reader = new FileReader();
-                      reader.onload = (ev) => {
-                        const result = ev.target?.result as string;
-                        setFormData((prev) => ({ ...prev, buktiUrl: result }));
-                        setPreviewUrl(result);
-                      };
-                      reader.readAsDataURL(file);
+                {/* ── Sub-baris list ── */}
+                <div className={styles.subRowsLabel}>
+                  <span>Detail Transaksi ({editSubRows.length} baris)</span>
+                  <button
+                    type="button"
+                    className={styles.addSubRowBtn}
+                    onClick={() => {
+                      const lastDate = editSubRows[editSubRows.length - 1]?.tanggal;
+                      setEditSubRows((prev) => [
+                        ...prev,
+                        {
+                          id: Math.random().toString(36).slice(2),
+                          tanggal: lastDate || new Date().toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+                          kategori: categoryOptions[0] || 'Mobil Siaga',
+                          link: '',
+                          masuk: '',
+                          keluar: '',
+                          buktiUrl: '',
+                          previewUrl: '',
+                          statusImplementasi: 'Belum Implementasi',
+                        },
+                      ]);
                     }}
                   >
-                    {previewUrl ? (
-                      <div className={styles.previewWrap}>
-                        <img src={previewUrl} alt="preview" className={styles.previewImg} />
+                    <PlusIcon /> Tambah Baris
+                  </button>
+                </div>
+
+                {editSubRows.map((sub, si) => (
+                  <div key={sub.id} className={styles.subRowCard}>
+                    <div className={styles.subRowCardHeader}>
+                      <span className={styles.subRowNum}>Baris {si + 1}</span>
+                      {editSubRows.length > 1 && (
                         <button
                           type="button"
-                          className={styles.removeImgBtn}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleClearImage();
+                          className={styles.removeSubRowBtn}
+                          onClick={() => {
+                            const toDel = editSubRows[si];
+                            if (toDel.dbId) {
+                              setEditDeletedDbIds((prev) => [...prev, toDel.dbId!]);
+                            }
+                            setEditSubRows((prev) => prev.filter((_, i) => i !== si));
                           }}
                         >
-                          &times; Hapus gambar
+                          <TrashIcon />
                         </button>
+                      )}
+                    </div>
+
+                    <div className={styles.formRow}>
+                      <div className={styles.formGroup}>
+                        <label className={styles.label}>Tanggal</label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="DD/MM/YYYY"
+                          value={sub.tanggal}
+                          onChange={(e) =>
+                            setEditSubRows((prev) =>
+                              prev.map((r, i) => (i === si ? { ...r, tanggal: e.target.value } : r))
+                            )
+                          }
+                          className={styles.input}
+                        />
                       </div>
-                    ) : (
-                      <div className={styles.uploadPlaceholder}>
-                        <UploadIcon />
-                        <span className={styles.uploadText}>Klik atau seret gambar ke sini</span>
-                        <span className={styles.uploadHint}>JPG, PNG, WEBP — maks 5 MB</span>
+                      <div className={styles.formGroup}>
+                        <label className={styles.label}>Kategori</label>
+                        <input
+                          type="text"
+                          required
+                          list={`edit-kat-list-${sub.id}`}
+                          placeholder="Contoh: Mobil Siaga"
+                          value={sub.kategori}
+                          onChange={(e) =>
+                            setEditSubRows((prev) =>
+                              prev.map((r, i) => (i === si ? { ...r, kategori: e.target.value } : r))
+                            )
+                          }
+                          className={styles.input}
+                        />
+                        <datalist id={`edit-kat-list-${sub.id}`}>
+                          {categoryOptions.map((k) => (
+                            <option key={k} value={k} />
+                          ))}
+                        </datalist>
                       </div>
-                    )}
+                    </div>
+
+                    <div className={styles.formGroup}>
+                      <label className={styles.label}>Link KitaBisa (Opsional)</label>
+                      <input
+                        type="text"
+                        placeholder="https://kitabisa.com/..."
+                        value={sub.link}
+                        onChange={(e) =>
+                          setEditSubRows((prev) =>
+                            prev.map((r, i) => (i === si ? { ...r, link: e.target.value } : r))
+                          )
+                        }
+                        className={styles.input}
+                      />
+                    </div>
+
+                    <div className={styles.formRow}>
+                      <div className={styles.formGroup}>
+                        <label className={styles.label}>Masuk (Rp)</label>
+                        <input
+                          type="number"
+                          placeholder="0"
+                          value={sub.masuk}
+                          onChange={(e) =>
+                            setEditSubRows((prev) =>
+                              prev.map((r, i) => (i === si ? { ...r, masuk: e.target.value } : r))
+                            )
+                          }
+                          className={styles.input}
+                        />
+                      </div>
+                      <div className={styles.formGroup}>
+                        <label className={styles.label}>Keluar (Rp)</label>
+                        <input
+                          type="number"
+                          placeholder="0"
+                          value={sub.keluar}
+                          onChange={(e) =>
+                            setEditSubRows((prev) =>
+                              prev.map((r, i) => (i === si ? { ...r, keluar: e.target.value } : r))
+                            )
+                          }
+                          className={styles.input}
+                        />
+                      </div>
+                    </div>
+
+                    <div className={styles.formGroup}>
+                      <label className={styles.label}>Status Implementasi</label>
+                      <select
+                        value={sub.statusImplementasi || 'Belum Implementasi'}
+                        onChange={(e) =>
+                          setEditSubRows((prev) =>
+                            prev.map((r, i) =>
+                              i === si
+                                ? { ...r, statusImplementasi: e.target.value as 'Sudah Implementasi' | 'Belum Implementasi' }
+                                : r
+                            )
+                          )
+                        }
+                        className={styles.selectInput}
+                      >
+                        <option value="Sudah Implementasi">Sudah Implementasi</option>
+                        <option value="Belum Implementasi">Belum Implementasi</option>
+                      </select>
+                    </div>
+
+                    {/* Bukti Upload */}
+                    <div className={styles.formGroup}>
+                      <label className={styles.label}>Bukti Gambar (Opsional)</label>
+                      <div
+                        className={styles.uploadZone}
+                        onClick={() => editFileRefs.current[si]?.click()}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          const file = e.dataTransfer.files?.[0];
+                          if (!file) return;
+                          const reader = new FileReader();
+                          reader.onload = (ev) => {
+                            const result = ev.target?.result as string;
+                            setEditSubRows((prev) =>
+                              prev.map((r, i) =>
+                                i === si ? { ...r, buktiUrl: result, previewUrl: result } : r
+                              )
+                            );
+                          };
+                          reader.readAsDataURL(file);
+                        }}
+                      >
+                        {sub.previewUrl ? (
+                          <div className={styles.previewWrap}>
+                            <img src={sub.previewUrl} alt="preview" className={styles.previewImg} />
+                            <button
+                              type="button"
+                              className={styles.removeImgBtn}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditSubRows((prev) =>
+                                  prev.map((r, i) => (i === si ? { ...r, buktiUrl: '', previewUrl: '' } : r))
+                                );
+                                if (editFileRefs.current[si]) editFileRefs.current[si]!.value = '';
+                              }}
+                            >
+                              &times; Hapus gambar
+                            </button>
+                          </div>
+                        ) : (
+                          <div className={styles.uploadPlaceholder}>
+                            <UploadIcon />
+                            <span className={styles.uploadText}>Klik atau seret gambar ke sini</span>
+                            <span className={styles.uploadHint}>JPG, PNG, WEBP — maks 5 MB</span>
+                          </div>
+                        )}
+                      </div>
+                      <input
+                        ref={(el) => {
+                          editFileRefs.current[si] = el;
+                        }}
+                        type="file"
+                        accept="image/jpeg,image/jpg,image/png,image/webp"
+                        style={{ display: 'none' }}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          const reader = new FileReader();
+                          reader.onload = (ev) => {
+                            const result = ev.target?.result as string;
+                            setEditSubRows((prev) =>
+                              prev.map((r, i) =>
+                                i === si ? { ...r, buktiUrl: result, previewUrl: result } : r
+                              )
+                            );
+                          };
+                          reader.readAsDataURL(file);
+                        }}
+                      />
+                    </div>
                   </div>
-                  <input
-                    ref={fileInputEditRef}
-                    type="file"
-                    accept="image/jpeg,image/jpg,image/png,image/webp"
-                    style={{ display: 'none' }}
-                    onChange={handleFileChange}
-                  />
-                </div>
+                ))}
               </div>
 
               <div className={styles.modalFooter}>
@@ -1305,7 +1656,7 @@ export default function DataNonMedis() {
                   Batal
                 </button>
                 <button type="submit" className={styles.submitBtn}>
-                  Perbarui Transaksi
+                  Simpan Perubahan
                 </button>
               </div>
             </form>

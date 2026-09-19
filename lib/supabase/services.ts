@@ -20,6 +20,9 @@ export interface DataNonMedisItem {
   buktiType: 'image' | 'link' | null;
   buktiUrl: string;
   link?: string;
+  namaPasien?: string;
+  noGroup?: number | null;
+  statusImplementasi?: 'Sudah Implementasi' | 'Belum Implementasi';
 }
 
 export interface TransaksiYayasanItem {
@@ -210,6 +213,9 @@ export async function getDataNonMedisList(): Promise<DataNonMedisItem[]> {
         buktiType: (row.bukti_type || row.buktiType || null) as 'image' | 'link' | null,
         buktiUrl: String(row.bukti_url || row.buktiUrl || ''),
         link: String(row.link || row.link_kitabisa || row.linkKitaBisa || ''),
+        namaPasien: String(row.nama_pasien || row.namaPasien || ''),
+        noGroup: row.no_group !== null && row.no_group !== undefined ? Number(row.no_group) : null,
+        statusImplementasi: (row.status_implementasi || row.statusImplementasi || 'Belum Implementasi') as 'Sudah Implementasi' | 'Belum Implementasi',
       }));
       if (typeof window !== 'undefined') {
         localStorage.setItem(STORAGE_KEYS.NON_MEDIS, JSON.stringify(formatted));
@@ -242,6 +248,9 @@ export async function addDataNonMedis(item: Omit<DataNonMedisItem, 'id'>): Promi
     bukti_type: item.buktiType,
     bukti_url: item.buktiUrl,
     link: item.link || '',
+    nama_pasien: item.namaPasien || '',
+    no_group: item.noGroup ?? null,
+    status_implementasi: item.statusImplementasi || 'Belum Implementasi',
   };
 
   try {
@@ -263,6 +272,9 @@ export async function addDataNonMedis(item: Omit<DataNonMedisItem, 'id'>): Promi
         buktiType: (row.bukti_type || row.buktiType || null) as 'image' | 'link' | null,
         buktiUrl: String(row.bukti_url || row.buktiUrl || ''),
         link: String(row.link || row.link_kitabisa || row.linkKitaBisa || ''),
+        namaPasien: String(row.nama_pasien || row.namaPasien || ''),
+        noGroup: row.no_group !== null && row.no_group !== undefined ? Number(row.no_group) : null,
+        statusImplementasi: (row.status_implementasi || row.statusImplementasi || 'Belum Implementasi') as 'Sudah Implementasi' | 'Belum Implementasi',
       };
     }
   } catch (err) {
@@ -288,6 +300,9 @@ export async function updateDataNonMedis(item: DataNonMedisItem): Promise<boolea
     bukti_type: item.buktiType,
     bukti_url: item.buktiUrl,
     link: item.link || '',
+    nama_pasien: item.namaPasien || '',
+    no_group: item.noGroup ?? null,
+    status_implementasi: item.statusImplementasi || 'Belum Implementasi',
   };
 
   try {

@@ -749,6 +749,10 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
+  max-height: 70vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
 }
 
 .formGroup {
@@ -954,6 +958,116 @@
   justify-content: space-between;
 }
 
+/* ── Nama Pasien Column ── */
+.colNamaPasien {
+  min-width: 130px;
+  max-width: 180px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #0f2b48;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Grouped row highlight ── */
+.groupedRow {
+  background: #f8faff;
+}
+
+.groupedRow:hover {
+  background: #f0f6ff;
+}
+
+/* ── Wide Modal (for multi sub-rows) ── */
+.modalCardWide {
+  max-width: 780px;
+  width: 96vw;
+}
+
+/* ── Group header box inside Add modal ── */
+.groupHeaderBox {
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 12px;
+  padding: 16px 18px;
+  margin-bottom: 18px;
+}
+
+/* ── Sub-rows label + add button row ── */
+.subRowsLabel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 700;
+  color: #334155;
+  margin-bottom: 10px;
+}
+
+.addSubRowBtn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  background: #0284c7;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.addSubRowBtn:hover {
+  background: #0369a1;
+}
+
+/* ── Individual sub-row card ── */
+.subRowCard {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px 18px;
+  margin-bottom: 12px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+}
+
+.subRowCardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.subRowNum {
+  font-size: 12px;
+  font-weight: 700;
+  color: #0284c7;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  background: #e0f2fe;
+  padding: 3px 10px;
+  border-radius: 6px;
+}
+
+.removeSubRowBtn {
+  display: flex;
+  align-items: center;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #dc2626;
+  border-radius: 7px;
+  padding: 5px 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.removeSubRowBtn:hover {
+  background: #fee2e2;
+}
+
 /* Responsive */
 @media (max-width: 1024px) {
   .topHeader {
@@ -985,3 +1099,61 @@
     justify-content: center;
   }
 }
+
+/* Status Implementasi Badge */
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.statusDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.statusSudah {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.statusSudah .statusDot {
+  background: #16a34a;
+}
+
+.statusBelum {
+  background: #fee2e2;
+  color: #ef4444;
+}
+
+.statusBelum .statusDot {
+  background: #ef4444;
+}
+
+.selectInput {
+  width: 100%;
+  height: 42px;
+  padding: 0 14px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 10px;
+  font-size: 13.5px;
+  color: #1e293b;
+  background-color: #f8fafc;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  cursor: pointer;
+}
+
+.selectInput:focus {
+  border-color: #0284c7;
+  background-color: #ffffff;
+  box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.12);
+}
+

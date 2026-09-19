@@ -27,8 +27,12 @@ CREATE TABLE IF NOT EXISTS public.data_nonmedis (
   bukti_type TEXT DEFAULT NULL,
   bukti_url TEXT DEFAULT '',
   link_kitabisa TEXT DEFAULT '',
+  nama_pasien TEXT DEFAULT '',
+  no_group BIGINT DEFAULT NULL,
+  status_implementasi TEXT DEFAULT 'Belum Implementasi',
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
 
 -- 3. TABEL TRANSAKSI YAYASAN
 CREATE TABLE IF NOT EXISTS public.transaksi_yayasan (
