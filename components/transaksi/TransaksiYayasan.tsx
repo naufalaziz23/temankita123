@@ -249,7 +249,12 @@ export default function TransaksiYayasan() {
   /* Computed summary */
   const totalDanaMasuk = useMemo(() => dataList.reduce((s, i) => s + (i.jumlahDonasi || 0), 0), [dataList]);
   const totalImplementasi = useMemo(() => dataList.reduce((s, i) => s + (getItemAlokasi(i) || 0), 0), [dataList, getItemAlokasi]);
-  const sisaTotal = useMemo(() => totalDanaMasuk - totalImplementasi, [totalDanaMasuk, totalImplementasi]);
+  // Sisa Implementasi: hanya dari baris yang belum implementasi; baris sudah implementasi dianggap sisa = 0
+  const sisaTotal = useMemo(() => {
+    return dataList
+      .filter((i) => i.statusImplementasi !== 'Sudah Implementasi')
+      .reduce((s, i) => s + ((i.jumlahDonasi || 0) - getItemAlokasi(i)), 0);
+  }, [dataList, getItemAlokasi]);
 
   /* Filtering */
   const filteredData = useMemo(() => {
@@ -548,8 +553,9 @@ export default function TransaksiYayasan() {
             ) : (
               pagedData.map((item, index) => {
                 const alokasiVal = getItemAlokasi(item);
-                const sisaVal = (item.jumlahDonasi || 0) - alokasiVal;
                 const isSudah = item.statusImplementasi === 'Sudah Implementasi';
+                // Jika sudah implementasi, sisa = 0 (dana habis diimplementasi)
+                const sisaVal = isSudah ? 0 : (item.jumlahDonasi || 0) - alokasiVal;
                 const statusText = isSudah ? 'Sudah Implementasi' : 'Belum Implementasi';
 
                 return (

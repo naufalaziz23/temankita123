@@ -205,12 +205,13 @@ function withSaldo(data: TransaksiKategori[], initialSaldo: number = 0): (Transa
 
   sortedAsc.forEach((t) => {
     running += (t.masuk ?? 0) - (t.keluar ?? 0);
-    saldoMap.set(t.id, running);
+    // Jika sudah implementasi, saldo baris ini = 0 (saldo habis diimplementasi)
+    saldoMap.set(t.id, t.statusImplementasi === 'Sudah Implementasi' ? 0 : running);
   });
 
   return data.map((t) => ({
     ...t,
-    saldo: saldoMap.get(t.id) ?? running,
+    saldo: saldoMap.get(t.id) ?? (t.statusImplementasi === 'Sudah Implementasi' ? 0 : running),
   }));
 }
 
@@ -465,7 +466,14 @@ export default function DataNonMedis() {
     return filteredData.reduce((s, t) => s + (t.keluar ?? 0), 0);
   }, [filteredData]);
 
-  const saldo = totalMasuk - totalKeluar;
+  // Sisa Saldo: hanya dari baris yang belum implementasi
+  // Jika semua baris sudah implementasi, saldo = 0
+  const saldo = useMemo(() => {
+    const belumImpl = filteredData.filter((t) => t.statusImplementasi !== 'Sudah Implementasi');
+    const masukBelum = belumImpl.reduce((s, t) => s + (t.masuk ?? 0), 0);
+    const keluarBelum = belumImpl.reduce((s, t) => s + (t.keluar ?? 0), 0);
+    return masukBelum - keluarBelum;
+  }, [filteredData]);
 
   /* Pagination calculations */
   const totalRecords = filteredData.length;
